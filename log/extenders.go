@@ -19,6 +19,13 @@ type Levellified struct {
 	Lvl Level
 }
 
+type Fieldified struct {
+	// wrapped logger
+	LevelLogger
+	// accumulated fields
+	fields Fields
+}
+
 type Level int8
 
 const (
