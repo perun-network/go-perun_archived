@@ -58,7 +58,7 @@ func (this *Database) Get(key string) (string, error) {
 
 	value, exists := this.data[key]
 	if !exists {
-		return "", errors.New("Requested nonexistent entry.")
+		return "", &db.ErrNotFound{Key: key}
 	} else {
 		return value, nil
 	}
@@ -88,7 +88,7 @@ func (this *Database) Delete(key string) error {
 	defer this.vmutex.Unlock()
 
 	if has, _ := this.Has(key); has {
-		return errors.New("Tried to delete nonexistent entry.")
+		return &db.ErrNotFound{Key: key}
 	} else {
 		delete(this.data, key)
 		return nil
