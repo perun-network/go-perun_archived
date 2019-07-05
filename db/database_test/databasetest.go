@@ -59,6 +59,7 @@ func (this *DatabaseTest) test() {
 	this.MustGetEqual("asdf", "yxcv")
 	// Remove 1234
 	this.Delete("1234")
+	this.MustFailDelete("1234")
 	// Has() must be false for deleted entries and Get() must fail.
 	this.MustNotHave("1234")
 	this.MustFailGet("1234")
@@ -165,7 +166,14 @@ func (this *DatabaseTest) MustGetBytesEqual(key string, expected []byte) {
 
 func (this *DatabaseTest) Delete(key string) {
 	if err := this.Database.Delete(key); err != nil {
-		this.Fatalf("Delete() ['%s'] failed: %v", key, err)
+		this.Errorf("Delete() ['%s'] failed: %v", key, err)
+	}
+	return
+}
+
+func (this *DatabaseTest) MustFailDelete(key string) {
+	if err := this.Database.Delete(key); err == nil {
+		this.Errorf("Delete() ['%s'] should have failed, but did not.\n", key)
 	}
 	return
 }
