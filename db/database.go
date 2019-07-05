@@ -24,7 +24,7 @@ func (e *ErrNotFound) Error() string {
 	return "db: key not found: " + e.Key
 }
 
-// Reader wraps the Had and Get methods of a key-value store.
+// Reader wraps the Has, Get and GetBytes methods of a key-value store.
 type Reader interface {
 	// Has checks if a key is present in the store.
 	Has(key string) (bool, error)
@@ -32,7 +32,7 @@ type Reader interface {
 	// Get returns the value as string for given key if it is present in the store.
 	Get(key string) (string, error)
 
-	// Get returns the value as []byte for given key if it is present in the store.
+	// GetBytes returns the value as []byte for given key if it is present in the store.
 	GetBytes(key string) ([]byte, error)
 }
 
