@@ -72,10 +72,10 @@ type PropertyProvider interface {
 }
 
 // Helper function to look up multiple properties at once.
-func Properties(this PropertyProvider, names []string) (props map[string]string, err error) {
+func Properties(provider PropertyProvider, names []string) (props map[string]string, err error) {
 	props = make(map[string]string)
 	for _, name := range names {
-		props[name], err = this.Property(name)
+		props[name], err = provider.Property(name)
 		if err != nil {
 			err = errors.Wrap(err, "Error retrieving property '"+name+"'")
 			return
