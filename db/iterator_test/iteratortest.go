@@ -14,10 +14,10 @@ type IteratorTest struct {
 
 func GenericIteratorTest(t *testing.T, database db.Database) {
 	dbtest := database_test.DatabaseTest{T: t, Database: database}
-	dbtest.Put("1", "1v")
-	dbtest.Put("2a", "2av")
 	dbtest.Put("2b", "2bv")
 	dbtest.Put("3", "3v")
+	dbtest.Put("1", "1v")
+	dbtest.Put("2a", "2av")
 
 	it := IteratorTest{T: t, Iterator: database.NewIterator()}
 	it.NextMustEqual("1", "1v")
