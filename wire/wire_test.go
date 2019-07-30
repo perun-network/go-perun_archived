@@ -5,6 +5,7 @@
 package wire
 
 import (
+	"bytes"
 	"io"
 	"math/big"
 	"reflect"
@@ -97,14 +98,16 @@ func TestWrongTypes(t *testing.T) {
 		complex128(1),
 	}
 
-	peruntest.CheckPanic(func() { Encode(w, values...) })
-
 	d := make([]interface{}, len(values))
 	for i, v := range values {
+		panics, _ := peruntest.CheckPanic(func() { Encode(w, v) })
+		assert.True(t, panics, "Encode() must panic on invalid type %T", v)
+
 		d[i] = reflect.New(reflect.TypeOf(v)).Interface()
+		panics, _ = peruntest.CheckPanic(func() { Decode(r, d[i]) })
+		assert.True(t, panics, "Decode() must panic on invalid type %T", v)
 	}
 
-	peruntest.CheckPanic(func() { Decode(r, d...) })
 	// Assert that SizeType can
 	if unsafe.Sizeof(maxBigIntLength) != unsafe.Sizeof(uint8(0)) {
 		t.Error("maxBigIntLength must have type uint8")
@@ -171,4 +174,68 @@ func testByteSlices(t *testing.T, serial ...ByteSlice) {
 		r.Close()
 		a.False(v.Decode(r) == nil && len(v) != 0, "decoding on closed reader should fail, but does not.")
 	}
+}
+
+// TestConvertByteSlice tests tryCastFromArray on arrays and slices.
+func TestTryCastFromArray(t *testing.T) {
+	// Create some non-0 array.
+	a := new([53]byte)
+	for i := range a {
+		a[i] = byte(^i)
+	}
+
+	t.Run("Array to Slice", func(t *testing.T) {
+		// Try to cast it to a slice.
+		if ok, slice := tryCastFromArray(a); ok {
+			// Check that the slice is the same as the array.
+			assert.True(t, bytes.Equal(a[:], slice), "Bytes must equal!")
+			// Modify first and last elements.
+			a[0]++
+			a[len(a)-1]++
+			// Equality must still hold.
+			assert.True(t, bytes.Equal(a[:], slice), "Bytes must equal after change!")
+		} else {
+			t.Errorf("Failed to convert array to slice!")
+		}
+	})
+
+	t.Run("Slice to Slice", func(t *testing.T) {
+		// Try to cast it to a slice.
+		if ok, slice := tryCastFromArray(a[:]); ok {
+			// Check that the slice is the same as the array.
+			assert.True(t, bytes.Equal(a[:], slice), "Bytes must equal!")
+			// Modify first and last elements.
+			a[0]++
+			a[len(a)-1]++
+			// Equality must still hold.
+			assert.True(t, bytes.Equal(a[:], slice), "Bytes must equal after change!")
+		} else {
+			t.Errorf("Failed to convert array to slice!")
+		}
+	})
+
+	t.Run("Non-byte array to Slice", func(t *testing.T) {
+		ok, slice := tryCastFromArray(&[4]int{})
+		assert.False(t, ok, "Wrong element type must fail.")
+		assert.Nil(t, slice, "On failure, must return nil slice.")
+	})
+
+	t.Run("Non-byte slice to Slice", func(t *testing.T) {
+		ok, slice := tryCastFromArray(make([]int, 4))
+		assert.False(t, ok, "Wrong element type must fail.")
+		assert.Nil(t, slice, "On failure, must return nil slice.")
+	})
+
+	t.Run("Non-addressable array to Slice", func(t *testing.T) {
+		panics, _ := peruntest.CheckPanic(func() {
+			tryCastFromArray([4]byte{})
+		})
+		assert.True(t, panics, "Must panic on non-addressable arrays.")
+	})
+
+	t.Run("Invalid type", func(t *testing.T) {
+		ok, slice := tryCastFromArray(0)
+		assert.False(t, ok, "Wrong type must fail.")
+		assert.Nil(t, slice, "On failure, must return nil slice.")
+	})
 }

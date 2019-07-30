@@ -5,11 +5,11 @@
 package wire
 
 import (
-	"time"
 	"io"
+	"time"
 
 	"github.com/pkg/errors"
-	
+
 	"perun.network/go-perun/log"
 )
 
@@ -35,7 +35,11 @@ func Encode(writer io.Writer, values ...interface{}) (err error) {
 		case time.Time:
 			err = FromTime(v).Encode(writer)
 		default:
-			log.Panicf("wire.Encode(): Invalid type %T", v)
+			if ok, bytes := tryCastFromArray(v); ok {
+				err = bytes.Encode(writer)
+			} else {
+				log.Panicf("wire.Encode(): Invalid type %T", v)
+			}
 		}
 
 		if err != nil {
@@ -84,7 +88,11 @@ func Decode(reader io.Reader, values ...interface{}) (err error) {
 			err = d.Decode(reader)
 			*v = d.Time()
 		default:
-			log.Panicf("wire.Decode(): Invalid type %T", v)
+			if ok, bytes := tryCastFromArray(v); ok {
+				err = bytes.Decode(reader)
+			} else {
+				log.Panicf("wire.Decode(): Invalid type %T", v)
+			}
 		}
 
 		if err != nil {
