@@ -7,25 +7,27 @@ package channel // import "perun.network/go-perun/backend/sim/channel"
 import (
 	"io"
 
+	"perun.network/go-perun/backend/sim/wallet"
 	"perun.network/go-perun/channel"
 	test "perun.network/go-perun/channel/test"
-	"perun.network/go-perun/wallet"
+	perun "perun.network/go-perun/wallet"
 )
 
 func init() {
 	channel.SetBackend(new(backend))
-	channel.SetAppBackend(new(noAppBackend))
+	channel.SetAppBackend(new(appBackend))
 }
 
-type noAppBackend struct{}
+type appBackend struct{}
 
-var _ channel.AppBackend = &noAppBackend{}
+var _ channel.AppBackend = &appBackend{}
 
-func (noAppBackend) AppFromDefinition(addr wallet.Address) (channel.App, error) {
-	return test.NewNoApp(addr), nil
+func (appBackend) AppFromDefinition(pAddr perun.Address) (channel.App, error) {
+	simAddr := pAddr.(*wallet.Address)
+	return NewStateApp1(*simAddr), nil
 }
 
-func (noAppBackend) DecodeAsset(r io.Reader) (channel.Asset, error) {
+func (appBackend) DecodeAsset(r io.Reader) (channel.Asset, error) {
 	var asset test.Asset
 	return &asset, asset.Decode(r)
 }
