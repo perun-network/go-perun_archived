@@ -29,61 +29,61 @@ type ActionApp1 struct {
 
 var _ channel.ActionApp = new(ActionApp1)
 
-// ActionType type of the possible actions for an ActionApp1
+// ActionType type of the possible actions for an ActionApp1.
 type ActionType = int64
 
 const (
-	// Init is the initial agreement phase
+	// Init is the initial agreement phase.
 	Init ActionType = iota
-	// Mod A parts wants to modify the `Counter`
+	// Mod A parts wants to modify the `Counter`.
 	Mod
-	//NOP A parts does not want to modify the `Counter` (No-OP)
+	//NOP A parts does not want to modify the `Counter` (No-OP).
 	NOP
 )
 
-// app1Action the action each part sends each round
+// app1Action the action each part sends each round.
 type app1Action struct {
 	Type ActionType
 
-	// Delta [-10,10]
+	// Delta [-10,10].
 	Delta int64
 }
 
 var _ perunio.Serializable = new(app1Action)
 
-// Encode encodes an `ActionApp1` into an `io.Writer`
+// Encode encodes an `ActionApp1` into an `io.Writer`.
 func (a *app1Action) Encode(w io.Writer) error {
 	return wire.Encode(w, a.Type, a.Delta)
 }
 
-// Decode decodes an `ActionApp1` from an `io.Reader`
+// Decode decodes an `ActionApp1` from an `io.Reader`.
 func (a *app1Action) Decode(r io.Reader) error {
 	return wire.Decode(r, &a.Type, &a.Delta)
 }
 
-// NewActionApp1 create a new `ActionApp1` with the specified definition
+// NewActionApp1 create a new `ActionApp1` with the specified definition.
 func NewActionApp1(definition wallet.Address) *ActionApp1 {
 	return &ActionApp1{definition, stateData{1}}
 }
 
-// Def returns the definition of an `ActionApp1`
+// Def returns the definition of an `ActionApp1`.
 func (a ActionApp1) Def() perun.Address {
 	return &a.definition
 }
 
-// DecodeData returns a decoded stateData or an error
+// DecodeData returns a decoded stateData or an error.
 func (a ActionApp1) DecodeData(r io.Reader) (channel.Data, error) {
 	var data stateData
 	return &data, data.Decode(r)
 }
 
-// DecodeAction returns a decoded app1Action or an error
+// DecodeAction returns a decoded app1Action or an error.
 func (a ActionApp1) DecodeAction(r io.Reader) (channel.Action, error) {
 	var act app1Action
 	return &act, act.Decode(r)
 }
 
-// ValidAction checks the passed actions for validity and returns an `ActionError` otherwise
+// ValidAction checks the passed actions for validity and returns an `ActionError` otherwise.
 func (a ActionApp1) ValidAction(params *channel.Params, state *channel.State, part uint, rawAction channel.Action) error {
 	log.WithField("part", part).Trace("ValidAction")
 	isPartaker := uint64(part) != (state.Version % uint64(len(params.Parts)))

@@ -19,79 +19,79 @@ import (
 	pkgtest "perun.network/go-perun/pkg/io/test"
 )
 
-// actionAppSetup contains all data to run TestActionApp1
+// actionAppSetup contains all data to run TestActionApp1.
 type actionAppSetup struct {
-	// ValidActParams `params` argument of ValidAction which should succeed
+	// ValidActParams `params` argument of ValidAction which should succeed.
 	ValidActParams *channel.Params
-	// ValidActState `state` argument of ValidAction which should succeed
+	// ValidActState `state` argument of ValidAction which should succeed.
 	ValidActState *channel.State
-	// ValidActPart `part` argument of ValidAction which should succeed
+	// ValidActPart `part` argument of ValidAction which should succeed.
 	ValidActPart uint
-	// ValidActAction `action` argument of ValidAction which should succeed
+	// ValidActAction `action` argument of ValidAction which should succeed.
 	ValidActAction channel.Action
 
-	// ValidActParams `params` argument of ValidAction which should fail
+	// ValidActParams `params` argument of ValidAction which should fail.
 	InvalidActParams *channel.Params
-	// ValidActState `state` argument of ValidAction which should fail
+	// ValidActState `state` argument of ValidAction which should fail.
 	InvalidActState *channel.State
-	// ValidActPart `part` argument of ValidAction which should fail
+	// ValidActPart `part` argument of ValidAction which should fail.
 	InvalidActPart uint
-	// ValidActAction `action` argument of ValidAction which should fail
+	// ValidActAction `action` argument of ValidAction which should fail.
 	InvalidActAction channel.Action
 
-	// ValidApplyParams `params` argument of ApplyActions which should succeed
+	// ValidApplyParams `params` argument of ApplyActions which should succeed.
 	ValidApplyParams *channel.Params
-	// ValidApplyState `state` argument of ApplyActions which should succeed
+	// ValidApplyState `state` argument of ApplyActions which should succeed.
 	ValidApplyState *channel.State
-	// ValidApplyActions `[]Action` argument of ApplyActions which should succeed
+	// ValidApplyActions `[]Action` argument of ApplyActions which should succeed.
 	ValidApplyActions []channel.Action
 
-	// InvalidApplyParams `params` argument of ApplyActions which should fail
+	// InvalidApplyParams `params` argument of ApplyActions which should fail.
 	InvalidApplyParams *channel.Params
-	// InvalidApplyState `state` argument of ApplyActions which should fail
+	// InvalidApplyState `state` argument of ApplyActions which should fail.
 	InvalidApplyState *channel.State
-	// InvalidApplyActions `[]Action` argument of ApplyActions which should fail
+	// InvalidApplyActions `[]Action` argument of ApplyActions which should fail.
 	InvalidApplyActions []channel.Action
 
-	// ValidInitParams `params` argument of InitState which should succeed
+	// ValidInitParams `params` argument of InitState which should succeed.
 	ValidInitParams *channel.Params
-	// ValidInitActions `action` argument of InitState which should succeed
+	// ValidInitActions `action` argument of InitState which should succeed.
 	ValidInitActions []channel.Action
 
-	// InvalidInitActions `action` argument of InitState which should succeed
+	// InvalidInitActions `action` argument of InitState which should succeed.
 	InvalidInitActions []channel.Action
 
-	// ActionApp the app on which the tests should be performed
+	// ActionApp the app on which the tests should be performed.
 	ActionApp channel.ActionApp
 }
 
-// stateAppSetup contains all data to run TestStateApp1
+// stateAppSetup contains all data to run TestStateApp1.
 type stateAppSetup struct {
-	// ValidTransParams `parameters` argument of ValidTransition which should succeed
+	// ValidTransParams `parameters` argument of ValidTransition which should succeed.
 	ValidTransParams *channel.Params
-	// ValidTransFrom `from` argument of ValidTransition which should succeed
+	// ValidTransFrom `from` argument of ValidTransition which should succeed.
 	ValidTransFrom *channel.State
-	// ValidTransTo `to` argument of ValidTransition which should succeed
+	// ValidTransTo `to` argument of ValidTransition which should succeed.
 	ValidTransTo *channel.State
 
-	// InvalidTransParams `parameters` argument of ValidTransition which should fail
+	// InvalidTransParams `parameters` argument of ValidTransition which should fail.
 	InvalidTransParams *channel.Params
-	// InvalidTransFrom `from` argument of ValidTransition which should fail
+	// InvalidTransFrom `from` argument of ValidTransition which should fail.
 	InvalidTransFrom *channel.State
-	// InvalidTransTo `to` argument of ValidTransition which should fail
+	// InvalidTransTo `to` argument of ValidTransition which should fail.
 	InvalidTransTo *channel.State
 
-	// ValidInitParams `parameters` argument of ValidInit which should succeed
+	// ValidInitParams `parameters` argument of ValidInit which should succeed.
 	ValidInitParams *channel.Params
-	// ValidInitState `state` argument of ValidInit which should succeed
+	// ValidInitState `state` argument of ValidInit which should succeed.
 	ValidInitState *channel.State
 
-	// InvalidInitParams `parameters` argument of ValidInit which should succeed
+	// InvalidInitParams `parameters` argument of ValidInit which should succeed.
 	InvalidInitParams *channel.Params
-	// InvalidInitState `state` argument of ValidInit which should succeed
+	// InvalidInitState `state` argument of ValidInit which should succeed.
 	InvalidInitState *channel.State
 
-	// StateApp the app on which the tests should be performed
+	// StateApp the app on which the tests should be performed.
 	StateApp channel.StateApp
 }
 
@@ -125,7 +125,7 @@ func TestStateApp1(t *testing.T) {
 	})
 }
 
-// StateApp1Test tests the `StateApp` interface functions of `StateApp1`
+// StateApp1Test tests the `StateApp` interface functions of `StateApp1`.
 func StateApp1Test(t *testing.T, s stateAppSetup) {
 	assert.True(t, channel.IsStateApp(s.StateApp), "StateApp1 should be detected as StateApp")
 	assert.False(t, channel.IsActionApp(s.StateApp), "StateApp1 should not be detected as ActionApp")
@@ -133,12 +133,12 @@ func StateApp1Test(t *testing.T, s stateAppSetup) {
 	t.Run("ValidTransition", func(t *testing.T) {
 		assert.NoError(t, s.StateApp.ValidTransition(s.ValidTransParams, s.ValidTransFrom, s.ValidTransTo), "ValidTransition with valid arguments should succeed")
 
-		// Set one parameter at a time to nil and check for panic
+		// Set one parameter at a time to nil and check for panic.
 		assert.Panics(t, func() { s.StateApp.ValidTransition(nil, s.ValidTransFrom, s.ValidTransTo) }, "ValidTransition with nil params should panic")
 		assert.Panics(t, func() { s.StateApp.ValidTransition(s.ValidTransParams, nil, s.ValidTransTo) }, "ValidTransition with nil from-state should panic")
 		assert.Panics(t, func() { s.StateApp.ValidTransition(s.ValidTransParams, s.ValidTransFrom, nil) }, "ValidTransition with nil to-state should panic")
 
-		// Set one parameter at a time to invalid and check for error
+		// Set one parameter at a time to invalid and check for error.
 		err := s.StateApp.ValidTransition(s.InvalidTransParams, s.ValidTransFrom, s.ValidTransTo)
 		assert.True(t, channel.IsStateTransitionError(err), "ValidTransition with invalid params should return StateTransitionError")
 		assert.Equal(t, errors.Cause(err).(*channel.StateTransitionError).ID, s.InvalidTransParams.ID())
@@ -155,12 +155,12 @@ func StateApp1Test(t *testing.T, s stateAppSetup) {
 	t.Run("ValidInit", func(t *testing.T) {
 		assert.NoError(t, s.StateApp.ValidInit(s.ValidInitParams, s.ValidInitState), "ValidInit with valid arguments should succeed")
 
-		// Set one parameter at a time to nil and check for panic
+		// Set one parameter at a time to nil and check for panic.
 		assert.Panics(t, func() { s.StateApp.ValidInit(nil, s.ValidInitState) }, "ValidInit with nil params should panic")
 		assert.Panics(t, func() { s.StateApp.ValidInit(s.ValidInitParams, nil) }, "ValidInit with nil state should panic")
 
 		// Set one parameter at a time to invalid and check for error
-		//assert.Error(t, s.StateApp.ValidInit(s.InvalidInitParams, s.ValidInitState), "ValidInit with invalid params should return error")
+		//assert.Error(t, s.StateApp.ValidInit(s.InvalidInitParams, s.ValidInitState), "ValidInit with invalid params should return error").
 		assert.Error(t, s.StateApp.ValidInit(s.ValidInitParams, s.InvalidInitState), "ValidInit with invalid state should return error")
 	})
 }
@@ -187,7 +187,7 @@ func TestActionApp1(t *testing.T) {
 	})
 }
 
-// ActionApp1Test tests the `ActionApp` interface functions of `ActionApp1`
+// ActionApp1Test tests the `ActionApp` interface functions of `ActionApp1`.
 func ActionApp1Test(t *testing.T, s actionAppSetup) {
 	assert.False(t, channel.IsStateApp(s.ActionApp), "ActionApp1 should not be detected as StateApp")
 	assert.True(t, channel.IsActionApp(s.ActionApp), "ActionApp1 should be detected as ActionApp")
@@ -195,7 +195,7 @@ func ActionApp1Test(t *testing.T, s actionAppSetup) {
 	t.Run("ValidAction", func(t *testing.T) {
 		assert.NoError(t, s.ActionApp.ValidAction(s.ValidActParams, s.ValidActState, s.ValidActPart, s.ValidActAction), "ValidAction with valid arguments should succeed")
 
-		// Set one parameter at a time to nil and check for panic
+		// Set one parameter at a time to nil and check for panic.
 		assert.Panics(t, func() { s.ActionApp.ValidAction(nil, s.ValidActState, s.ValidActPart, s.ValidActAction) }, "ValidAction with nil params should panic")
 		assert.Panics(t, func() { s.ActionApp.ValidAction(s.ValidActParams, nil, s.ValidActPart, s.ValidActAction) }, "ValidAction with nil state should panic")
 		assert.Panics(t, func() {
@@ -203,7 +203,7 @@ func ActionApp1Test(t *testing.T, s actionAppSetup) {
 		}, "ValidAction with invalid part should panic")
 		assert.Panics(t, func() { s.ActionApp.ValidAction(s.ValidActParams, s.ValidActState, s.ValidActPart, nil) }, "ValidAction with nil actions should panic")
 
-		// Set one parameter at a time to invalid and check for error
+		// Set one parameter at a time to invalid and check for error.
 		assert.Panics(t, func() { s.ActionApp.ValidAction(s.InvalidActParams, s.ValidActState, s.ValidActPart, s.ValidActAction) }, "ValidAction with invalid params should panic")
 		assert.Panics(t, func() { s.ActionApp.ValidAction(s.ValidActParams, s.InvalidActState, s.ValidActPart, s.ValidActAction) }, "ValidAction with invalid state should panic")
 
@@ -220,14 +220,14 @@ func ActionApp1Test(t *testing.T, s actionAppSetup) {
 		require.Equal(t, s.ValidApplyParams.ID(), s.ValidApplyState.ID)
 		_, err := s.ActionApp.ApplyActions(s.ValidApplyParams, s.ValidApplyState, s.ValidApplyActions)
 		assert.NoError(t, err, "ApplyActions with valid arguments should succeed")
-		// DEFECT we cant compare the result state of ApplyActions because they are not compareable
+		// DEFECT we cant compare the result state of ApplyActions because they are not compareable.
 
-		// Set one parameter at a time to nil and check for panic
+		// Set one parameter at a time to nil and check for panic.
 		assert.Panics(t, func() { s.ActionApp.ApplyActions(nil, s.ValidApplyState, s.ValidApplyActions) }, "ApplyActions with nil params should panic")
 		assert.Panics(t, func() { s.ActionApp.ApplyActions(s.ValidApplyParams, nil, s.ValidApplyActions) }, "ApplyActions with nil state should panic")
 		assert.Panics(t, func() { s.ActionApp.ApplyActions(s.ValidApplyParams, s.ValidApplyState, nil) }, "ApplyActions with nil actions should panic")
 
-		// Set one parameter at a time to invalid and check for panic
+		// Set one parameter at a time to invalid and check for panic.
 		assert.Panics(t, func() { s.ActionApp.ApplyActions(s.InvalidApplyParams, s.ValidApplyState, s.ValidApplyActions) }, "ApplyActions with invalid params should panic")
 		assert.Panics(t, func() { s.ActionApp.ApplyActions(s.ValidApplyParams, s.InvalidApplyState, s.ValidApplyActions) }, "ApplyActions with invalid state should panic")
 		assert.Panics(t, func() { s.ActionApp.ApplyActions(s.ValidApplyParams, s.ValidApplyState, s.InvalidApplyActions) }, "ApplyActions with invalid actions should panic")
@@ -239,7 +239,7 @@ func ActionApp1Test(t *testing.T, s actionAppSetup) {
 		assert.NoError(t, err, "InitState with valid arguments should succeed")
 
 		// Set one parameter at a time to nil and check for panic
-		// DEFECT we cant compare Allocation and Data
+		// DEFECT we cant compare Allocation and Data.
 		assert.Panics(t, func() { s.ActionApp.InitState(nil, s.ValidInitActions) }, "InitState with nil parameter should panic")
 		assert.Panics(t, func() { s.ActionApp.InitState(s.ValidInitParams, nil) }, "InitState with nil actions should panic")
 		assert.Panics(t, func() { s.ActionApp.InitState(s.ValidInitParams, s.InvalidInitActions) }, "InitState with invalid actions should return error")

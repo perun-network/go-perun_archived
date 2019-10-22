@@ -24,7 +24,7 @@ type StateApp1 struct {
 	data       stateData
 }
 
-// stateData The data that is stored in channel.State.Data
+// stateData The data that is stored in channel.State.Data.
 type stateData struct {
 	Counter int64
 }
@@ -32,7 +32,7 @@ type stateData struct {
 var _ channel.StateApp = new(StateApp1)
 var _ channel.Data = new(stateData)
 
-// Encode encodes an Asset into the io.Writer `w`
+// Encode encodes an Asset into the io.Writer `w`.
 func (a *stateData) Encode(w io.Writer) error {
 	return wire.Encode(w, a.Counter)
 }
@@ -45,23 +45,23 @@ func (a *stateData) Clone() channel.Data {
 	return &stateData{Counter: a.Counter}
 }
 
-// NewStateApp1 create an App with the given definition Address
+// NewStateApp1 create an App with the given definition Address.
 func NewStateApp1(definition wallet.Address) *StateApp1 {
 	return &StateApp1{definition, stateData{1}}
 }
 
-// Def returns the definition on the App
+// Def returns the definition on the App.
 func (a StateApp1) Def() perun.Address {
 	return &a.definition
 }
 
-// DecodeData returns a decoded stateData or an error
+// DecodeData returns a decoded stateData or an error.
 func (a StateApp1) DecodeData(r io.Reader) (channel.Data, error) {
 	var data stateData
 	return &data, data.Decode(r)
 }
 
-// ValidTransition checks the transition for validity
+// ValidTransition checks the transition for validity.
 func (a StateApp1) ValidTransition(params *channel.Params, from, to *channel.State) error {
 	if from.IsFinal {
 		log.Panic("Transition after final state requested")
@@ -89,7 +89,7 @@ func (a StateApp1) ValidTransition(params *channel.Params, from, to *channel.Sta
 	return nil
 }
 
-// ValidInit checks the initial state for validity
+// ValidInit checks the initial state for validity.
 func (a StateApp1) ValidInit(params *channel.Params, state *channel.State) error {
 	data, ok := state.Data.(*stateData)
 	if !ok {
