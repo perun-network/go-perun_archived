@@ -32,7 +32,7 @@ type stateData struct {
 var _ channel.StateApp = new(StateApp1)
 var _ channel.Data = new(stateData)
 
-// Encode encodes an Asset into the io.Writer `w`.
+// Encode encodes an Asset into the io.Writer w.
 func (a *stateData) Encode(w io.Writer) error {
 	return wire.Encode(w, a.Counter)
 }

@@ -17,11 +17,11 @@ import (
 	"perun.network/go-perun/wire"
 )
 
-// ActionApp1 starts in state `Init` where the `Counter` of `data` is set to 0.
-// Each round all participants send a `Delta` value between -10 and 10 together with `ActionType`=`Mod`.
+// ActionApp1 starts in state Init where the Counter of data is set to 0.
+// Each round all participants send a Delta value between -10 and 10 together with ActionType=Mod.
 // Participant with the id=version % len(participants) is excluded in each round to test the concept of invalid partakers.
-// An excluded participant has to send `ActionType`=`NOP`.
-// `Counter` is then updated by adding all `Delta`s to `Counter`.
+// An excluded participant has to send ActionType=NOP.
+// Counter is then updated by adding all Deltas to Counter.
 type ActionApp1 struct {
 	definition wallet.Address
 	data       stateData
@@ -35,9 +35,9 @@ type ActionType = int64
 const (
 	// Init is the initial agreement phase.
 	Init ActionType = iota
-	// Mod A parts wants to modify the `Counter`.
+	// Mod A parts wants to modify the Counter.
 	Mod
-	//NOP A parts does not want to modify the `Counter` (No-OP).
+	//NOP A parts does not want to modify the Counter (No-OP).
 	NOP
 )
 
@@ -51,22 +51,22 @@ type app1Action struct {
 
 var _ perunio.Serializable = new(app1Action)
 
-// Encode encodes an `ActionApp1` into an `io.Writer`.
+// Encode encodes an ActionApp1 into an io.Writer.
 func (a *app1Action) Encode(w io.Writer) error {
 	return wire.Encode(w, a.Type, a.Delta)
 }
 
-// Decode decodes an `ActionApp1` from an `io.Reader`.
+// Decode decodes an ActionApp1 from an io.Reader.
 func (a *app1Action) Decode(r io.Reader) error {
 	return wire.Decode(r, &a.Type, &a.Delta)
 }
 
-// NewActionApp1 create a new `ActionApp1` with the specified definition.
+// NewActionApp1 create a new ActionApp1 with the specified definition.
 func NewActionApp1(definition wallet.Address) *ActionApp1 {
 	return &ActionApp1{definition, stateData{1}}
 }
 
-// Def returns the definition of an `ActionApp1`.
+// Def returns the definition of an ActionApp1.
 func (a ActionApp1) Def() perun.Address {
 	return &a.definition
 }
@@ -83,7 +83,7 @@ func (a ActionApp1) DecodeAction(r io.Reader) (channel.Action, error) {
 	return &act, act.Decode(r)
 }
 
-// ValidAction checks the passed actions for validity and returns an `ActionError` otherwise.
+// ValidAction checks the passed actions for validity and returns an ActionError otherwise.
 func (a ActionApp1) ValidAction(params *channel.Params, state *channel.State, part uint, rawAction channel.Action) error {
 	log.WithField("part", part).Trace("ValidAction")
 	isPartaker := uint64(part) != (state.Version % uint64(len(params.Parts)))
@@ -117,7 +117,7 @@ func (a ActionApp1) ValidAction(params *channel.Params, state *channel.State, pa
 	return nil
 }
 
-// ApplyActions applies the actions unto a copy of `state` and returns the result or an error.
+// ApplyActions applies the actions unto a copy of state and returns the result or an error.
 func (a ActionApp1) ApplyActions(params *channel.Params, state *channel.State, rawActions []channel.Action) (*channel.State, error) {
 	log.Trace("ApplyActions")
 	newState := state.Clone()
