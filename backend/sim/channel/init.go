@@ -9,7 +9,6 @@ import (
 
 	"perun.network/go-perun/backend/sim/wallet"
 	"perun.network/go-perun/channel"
-	test "perun.network/go-perun/channel/test"
 	perun "perun.network/go-perun/wallet"
 )
 
@@ -28,6 +27,6 @@ func (appBackend) AppFromDefinition(pAddr perun.Address) (channel.App, error) {
 }
 
 func (appBackend) DecodeAsset(r io.Reader) (channel.Asset, error) {
-	var asset test.Asset
+	var asset wallet.Address
 	return &asset, asset.Decode(r)
 }
