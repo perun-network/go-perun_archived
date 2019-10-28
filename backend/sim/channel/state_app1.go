@@ -75,11 +75,11 @@ func (a StateApp1) ValidTransition(params *channel.Params, from, to *channel.Sta
 
 	oldData, ok := from.Data.(*stateData)
 	if !ok {
-		log.Panic("Old data invalid")
+		return errors.New("old data invalid")
 	}
 	newData, ok := to.Data.(*stateData)
 	if !ok {
-		return channel.NewStateTransitionError(params.ID(), "New data invalid")
+		return errors.New("new data invalid")
 	}
 
 	if newData.Counter != oldData.Counter*2 && newData.Counter != oldData.Counter/2 {
