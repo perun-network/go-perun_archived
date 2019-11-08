@@ -10,15 +10,17 @@ import (
 )
 
 type Client struct {
-	id      peer.Identity
+	id          peer.Identity
 	peers       *peer.Registry
+	propHandler ProposalHandler
 	quit        chan struct{}
 	log         log.Logger // structured logger for this client
 }
 
-func New(id peer.Identity, dialer peer.Dialer) *Client {
+func New(id peer.Identity, dialer peer.Dialer, propHandler ProposalHandler) *Client {
 	c := &Client{
-		id: id,
+		id:          id,
+		propHandler: propHandler,
 		quit:        make(chan struct{}),
 		log:         log.WithField("client", id.Address),
 	}
@@ -53,6 +55,12 @@ func (c *Client) Listen(listener peer.Listener) {
 }
 
 func (c *Client) subscribePeer(p *peer.Peer) {
-	log.Debugf("Client: subscribing peer: %v", p.PerunAddress)
-	// TODO actual subscriptions
+	c.logPeer(p).Debugf("setting up default subscriptions")
+
+	// handle incoming channel proposals
+	c.subChannelProposals(p)
+}
+
+func (c *Client) logPeer(p *peer.Peer) log.Logger {
+	return c.log.WithField("peer", p.PerunAddress)
 }
