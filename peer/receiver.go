@@ -131,3 +131,9 @@ func NewReceiver() *Receiver {
 		msgs: make(chan msgTuple, receiverBufferSize),
 	}
 }
+
+// Subscribe is a convenience function to set up a subscription on a single peer
+func Subscribe(p *Peer, predicate func(wire.Msg) bool) (*Receiver, error) {
+	rec := NewReceiver()
+	return rec, rec.Subscribe(p, predicate)
+}
