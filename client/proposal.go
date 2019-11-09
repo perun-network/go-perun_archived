@@ -6,7 +6,9 @@ package client
 
 import (
 	"context"
+	"sync/atomic"
 
+	"perun.network/go-perun/log"
 	"perun.network/go-perun/peer"
 	"perun.network/go-perun/wallet"
 	wire "perun.network/go-perun/wire/msg"
@@ -18,28 +20,30 @@ type (
 	}
 
 	ProposalResponder struct {
-		accept chan ctxProposalResponse
-		reject chan ctxRejection
+		accept chan ctxProposalAcc
+		reject chan ctxProposalRej
 		err    chan error // return error
+		called int32      // atomically accessed state
 	}
 
-	ProposalResponse struct {
+	ProposalAcc struct {
 		Participant wallet.Account
 		// TODO add Funder
+		// TODO add UpdateHandler
 	}
 
 	// The following type is only needed to bundle the ctx and res of
 	// ProposalResponder.Accept() into a single struct so that they can be sent
 	// over a channel
-	ctxProposalResponse struct {
-		ProposalResponse
+	ctxProposalAcc struct {
+		ProposalAcc
 		ctx context.Context
 	}
 
 	// The following type is only needed to bundle the ctx and reason of
 	// ProposalResponder.Reject() into a single struct so that they can be sent
 	// over a channel
-	ctxRejection struct {
+	ctxProposalRej struct {
 		ctx    context.Context
 		reason string
 	}
@@ -47,8 +51,8 @@ type (
 
 func newProposalResponder() *ProposalResponder {
 	return &ProposalResponder{
-		accept: make(chan ctxProposalResponse),
-		reject: make(chan ctxRejection),
+		accept: make(chan ctxProposalAcc),
+		reject: make(chan ctxProposalRej),
 		err:    make(chan error),
 	}
 }
@@ -56,25 +60,37 @@ func newProposalResponder() *ProposalResponder {
 // Accept lets the user signal that they want to accept the channel proposal.
 //
 // TODO Add channel controller to return values
-func (r *ProposalResponder) Accept(ctx context.Context, res ProposalResponse) error {
-	// TODO add means (like a chan) to reply to the response with a `struct {
-	//   *Channel, error }` by the routine reading the r.accept channel.
-	r.accept <- ctxProposalResponse{res, ctx}
+func (r *ProposalResponder) Accept(ctx context.Context, res ProposalAcc) error {
+	if !atomic.CompareAndSwapInt32(&r.called, 0, 1) {
+		log.Panic("multiple calls on proposal responder")
+	}
+	defer r.close()
+	r.accept <- ctxProposalAcc{res, ctx}
+	// TODO return (*Channel, error) when first version of channel controller is present
 	return <-r.err
 }
 
 // Reject lets the user signal that they reject the channel proposal.
 func (r *ProposalResponder) Reject(ctx context.Context, reason string) error {
-	r.reject <- ctxRejection{ctx, reason}
+	if !atomic.CompareAndSwapInt32(&r.called, 0, 1) {
+		log.Panic("multiple calls on proposal responder")
+	}
+	defer r.close()
+	r.reject <- ctxProposalRej{ctx, reason}
 	return <-r.err
+}
+
+// called by Accept or Reject once one of them has returned
+func (r *ProposalResponder) close() {
+	close(r.accept)
+	close(r.reject)
+	close(r.err)
 }
 
 func (c *Client) subChannelProposals(p *peer.Peer) {
 	proposalReceiver, err := peer.Subscribe(p,
-		func(m wire.Msg) (ok bool) {
-			_, ok = m.(*ChannelProposal)
-			return
-		})
+		func(m wire.Msg) bool { return m.Type() == wire.ChannelProposal },
+	)
 	if err != nil {
 		c.logPeer(p).Warnf("failed to subscribe to channel proposals on new peer")
 		return
