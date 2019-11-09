@@ -5,6 +5,7 @@
 package channel
 
 import (
+	"io"
 	"testing"
 
 	"perun.network/go-perun/pkg/test"
@@ -32,6 +33,11 @@ func (m *mockBackend) Verify(wallet.Address, *Params, *State, Sig) (bool, error)
 	return false, nil
 }
 
+func (m *mockBackend) DecodeSig(io.Reader) (Sig, error) {
+	m.AssertWrapped()
+	return nil, nil
+}
+
 // compile-time check that mockBackend implements Backend
 var _ Backend = (*mockBackend)(nil)
 
@@ -47,5 +53,8 @@ func TestGlobalBackend(t *testing.T) {
 	b.AssertCalled()
 
 	Verify(nil, nil, nil, nil)
+	b.AssertCalled()
+
+	DecodeSig(nil)
 	b.AssertCalled()
 }
