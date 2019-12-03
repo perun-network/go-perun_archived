@@ -81,6 +81,6 @@ func newWalletSetup() *test.Setup {
 		Backend:         new(Backend),
 		UnlockedAccount: unlockedAccount,
 		InitWallet:      initWallet,
-		AddrString:      accountB.Address().String(),
+		AddressBytes:    accountB.Address().Bytes(),
 	}
 }

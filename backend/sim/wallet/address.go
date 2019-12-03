@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"io"
 	"math/big"
 
@@ -51,9 +52,9 @@ func (a Address) Bytes() []byte {
 	return buff.Bytes()
 }
 
-// String converts this address to a string.
+// String converts this address to a human-readable string.
 func (a Address) String() string {
-	return string(a.Bytes())
+	return "0x" + hex.EncodeToString(a.Bytes())[2:10]
 }
 
 // Equals checks the equality of two addresses.

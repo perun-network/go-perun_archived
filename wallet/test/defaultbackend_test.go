@@ -5,12 +5,19 @@
 package test
 
 import (
+	"encoding/hex"
 	"testing"
 )
 
 func TestDefaultWalletBackend_Address(t *testing.T) {
+	addr := "204b49d0acfecbee86904de3aa37b3d28fc0233561de51fbcd34e4be33ee9d53"
+	bytes, err := hex.DecodeString(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	GenericAddressTest(t, &Setup{
-		AddrString: "204b49d0acfecbee86904de3aa37b3d28fc0233561de51fbcd34e4be33ee9d53",
-		Backend:    new(DefaultWalletBackend),
+		AddressBytes: bytes,
+		Backend:      new(DefaultWalletBackend),
 	})
 }

@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"encoding/hex"
 	"io"
 
 	"github.com/pkg/errors"
@@ -26,9 +27,12 @@ type Backend struct{}
 var _ wallet.Backend = new(Backend)
 
 // NewAddressFromString creates a new address from a string.
-// DEPRECATED
 func (b *Backend) NewAddressFromString(s string) (wallet.Address, error) {
-	return b.NewAddressFromBytes([]byte(s))
+	if bs, err := hex.DecodeString(s); err != nil {
+		return nil, err
+	} else {
+		return b.NewAddressFromBytes(bs)
+	}
 }
 
 // NewAddressFromBytes creates a new address from a byte array.
