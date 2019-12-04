@@ -6,7 +6,6 @@ package test // import "perun.network/go-perun/wallet/test"
 
 import (
 	"bytes"
-	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -159,13 +158,11 @@ func GenericAddressTest(t *testing.T, s *Setup) {
 	addr, err := s.Backend.NewAddressFromBytes(s.AddressBytes)
 	assert.Nil(t, err, "Byte deserialization of address should work")
 
+	nullString := null.String()
 	addrString := addr.String()
-	if addrString[:2] == "0x" {
-		addrString = addrString[2:]
-	}
-	fullAddrString := hex.EncodeToString(s.AddressBytes)
+	assert.Greater(t, len(nullString), 0)
 	assert.Greater(t, len(addrString), 0)
-	assert.Contains(t, fullAddrString, addrString)
+	assert.NotEqual(t, addrString, nullString)
 
 	assert.Equal(t, s.AddressBytes, addr.Bytes(), "Expected equality of address bytes")
 	assert.False(t, addr.Equals(null), "Expected inequality of zero, nonzero address")
