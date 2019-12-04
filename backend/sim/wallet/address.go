@@ -54,7 +54,13 @@ func (a Address) Bytes() []byte {
 
 // String converts this address to a human-readable string.
 func (a Address) String() string {
-	return "0x" + hex.EncodeToString(a.Bytes())[2:10]
+	// Encode the address directly instead of using Address.Bytes() because
+	// * some addresses may have a very short encoding, e.g., the null address,
+	// * the output may contain encoding information, e.g., the length.
+	bs := make([]byte, 4)
+	copy(bs, a.X.Bytes())
+
+	return "0x" + hex.EncodeToString(bs)
 }
 
 // Equals checks the equality of two addresses.
@@ -76,8 +82,7 @@ func (a *Address) Encode(w io.Writer) error {
 	if err := (wire.BigInt{Int: a.Y}.Encode(w)); err != nil {
 		return errors.Wrap(err, "address encode error")
 	}
-	// Dont sezialize the curve since its constant
-
+	// Do not serialize the curve because it is constant.
 	return nil
 }
 
