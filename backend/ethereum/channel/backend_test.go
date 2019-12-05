@@ -18,6 +18,10 @@ import (
 	wallettest "perun.network/go-perun/wallet/test"
 )
 
+func init() {
+	channel.SetAppBackend(new(test.NoAppBackend))
+}
+
 func TestGenericTests(t *testing.T) {
 	setup := newChannelSetup()
 	test.GenericBackendTest(t, setup)
@@ -29,8 +33,8 @@ func newChannelSetup() *test.Setup {
 	app := test.NewRandomApp(rng)
 	app2 := test.NewRandomApp(rng)
 
-	params := test.NewRandomParams(rng, app)
-	params2 := test.NewRandomParams(rng, app2)
+	params := test.NewRandomParams(rng, app.Def())
+	params2 := test.NewRandomParams(rng, app2.Def())
 
 	state := test.NewRandomState(rng, params)
 	state2 := test.NewRandomState(rng, params2)
