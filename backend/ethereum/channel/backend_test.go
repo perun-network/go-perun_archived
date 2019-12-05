@@ -82,13 +82,15 @@ func TestChannelID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			backend := new(wallet.Backend)
+
 			nonce, ok := new(big.Int).SetString(tt.nonceStr, 16)
 			assert.True(t, ok, "Setting the nonce should not fail")
-			alice, err := perunwallet.NewAddressFromString(tt.aliceAddr)
+			alice, err := backend.NewAddressFromString(tt.aliceAddr)
 			assert.NoError(t, err, "Creating Alices address should not fail")
-			bob, err := perunwallet.NewAddressFromString(tt.bobAddr)
+			bob, err := backend.NewAddressFromString(tt.bobAddr)
 			assert.NoError(t, err, "Creating Bobs address should not fail")
-			app, err := perunwallet.NewAddressFromString(tt.appAddr)
+			app, err := backend.NewAddressFromString(tt.appAddr)
 			assert.NoError(t, err, "Creating the MockApp address should not fail")
 			params := channel.Params{
 				ChallengeDuration: tt.challengDur,
