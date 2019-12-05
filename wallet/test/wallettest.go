@@ -29,7 +29,7 @@ type Setup struct {
 	UnlockedAccount UnlockedAccount // provides an account that is ready to sign
 	InitWallet      InitWallet      // function that initializes a wallet.
 	//Address tests
-	AddressBytes []byte         // valid address, should not be in wallet
+	AddressBytes []byte         // a valid nonzero address not in the wallet
 	Backend      wallet.Backend // backend implementation
 	// Signature tests
 	DataToSign []byte
