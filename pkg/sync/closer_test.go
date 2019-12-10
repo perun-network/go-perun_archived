@@ -84,6 +84,24 @@ func TestCloser_Close(t *testing.T) {
 	})
 }
 
+// TestCloser_Lifetime checks that all callback registered before `Close()` was
+// called are executed and all calls to `OnClose(fn)` after the `Close()` call
+// return errors and do _not_ execute the callback.
+func TestCloser_Lifetime(t *testing.T) {
+	var c Closer
+	callback0Called := new(bool)
+	callback1Called := new(bool)
+
+	fn0 := func() { *callback0Called = true }
+	fn1 := func() { *callback1Called = true }
+
+	assert.NoError(t, c.OnClose(fn0))
+	assert.NoError(t, c.Close())
+	err := c.OnClose(fn1)
+	assert.Error(t, err)
+	assert.IsType(t, alreadyClosedError{}, err)
+}
+
 // TestCloser_OnClose_Hammer hammers the Closer to expose any data races.
 func TestCloser_OnClose_Hammer(t *testing.T) {
 	t.Parallel()

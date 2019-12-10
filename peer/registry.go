@@ -237,6 +237,11 @@ func (r *Registry) Has(addr Address) bool {
 func (r *Registry) addPeer(addr Address, conn Conn) *Peer {
 	// Create and register a new peer.
 	peer := newPeer(addr, conn, r.dialer)
+	if err := peer.OnClose(func() { r.delete(peer) }); err != nil {
+		r.delete(peer)
+		log.Errorf("peer %v: %v", addr, err)
+		return nil
+	}
 	r.peers = append(r.peers, peer)
 	// Setup the peer's subscriptions.
 	r.subscribe(peer)

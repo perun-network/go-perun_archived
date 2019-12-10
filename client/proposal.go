@@ -109,11 +109,18 @@ func (c *Client) subChannelProposals(p *peer.Peer) {
 	}
 
 	// Aborts the proposal handler loop when the Peer is closed.
-	p.OnClose(func() {
+	onCloseHandler := func() {
 		if err := proposalReceiver.Close(); err != nil {
 			c.logPeer(p).Errorf("failed to close proposal receiver: %v", err)
 		}
-	})
+	}
+	if err := p.OnClose(onCloseHandler); err != nil {
+		proposalReceiver.Close()
+		c.logPeer(p).Errorf(
+			"failed to register Peer(%v).OnClose() hook: %v",
+			p.PerunAddress, err)
+		return
+	}
 
 	// proposal handler loop.
 	go func() {

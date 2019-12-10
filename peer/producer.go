@@ -71,8 +71,11 @@ func (p *producer) Subscribe(c Consumer, predicate msg.Predicate) error {
 		}
 	}
 
+	if err := c.OnClose(func() { p.delete(c) }); err != nil {
+		return err
+	}
+
 	p.consumers = append(p.consumers, subscription{consumer: c, predicate: predicate})
-	c.OnClose(func() { p.delete(c) })
 
 	// Put cached messages into consumer in a go routine because receiving on it
 	// probably starts after subscription.

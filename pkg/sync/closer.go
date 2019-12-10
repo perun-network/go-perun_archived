@@ -26,7 +26,7 @@ type Closer struct {
 
 // OnCloser contains the OnClose function.
 type OnCloser interface {
-	OnClose(func())
+	OnClose(func()) error
 }
 
 func (c *Closer) initOnce() {
@@ -51,9 +51,14 @@ func (c *Closer) Close() error {
 
 	c.onClosedMtx.Lock()
 	defer c.onClosedMtx.Unlock()
+
+	barrier := new(sync.WaitGroup)
+	barrier.Add(len(c.onClosed))
+
 	for _, fn := range c.onClosed {
 		fn()
 	}
+	barrier.Wait()
 
 	close(c.closed)
 
@@ -68,16 +73,17 @@ func (c *Closer) IsClosed() bool {
 // OnClose registers the passed callback to be called when the Closer is closed.
 // If the Closer is already closed, immediately executes the callback in a
 // goroutine.
-func (c *Closer) OnClose(handler func()) {
+func (c *Closer) OnClose(handler func()) error {
 	c.onClosedMtx.Lock()
 	defer c.onClosedMtx.Unlock()
 	// Check again, because Close might have been called before the lock was
 	// acquired.
 	if c.IsClosed() {
-		handler()
-	} else {
-		c.onClosed = append(c.onClosed, handler)
+		return alreadyClosedError{}
 	}
+
+	c.onClosed = append(c.onClosed, handler)
+	return nil
 }
 
 var _ error = alreadyClosedError{}
