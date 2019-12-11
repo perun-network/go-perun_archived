@@ -238,7 +238,6 @@ func (r *Registry) addPeer(addr Address, conn Conn) *Peer {
 	// Create and register a new peer.
 	peer := newPeer(addr, conn, r.dialer)
 	if err := peer.OnClose(func() { r.delete(peer) }); err != nil {
-		r.delete(peer)
 		log.Errorf("peer %v: %v", addr, err)
 		return nil
 	}
