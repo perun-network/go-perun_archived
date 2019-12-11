@@ -79,7 +79,7 @@ func (c *Closer) OnClose(handler func()) error {
 	// Check again, because Close might have been called before the lock was
 	// acquired.
 	if c.IsClosed() {
-		return alreadyClosedError{}
+		return newAlreadyClosedError()
 	}
 
 	c.onClosed = append(c.onClosed, handler)
