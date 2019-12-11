@@ -97,9 +97,12 @@ func TestCloser_Lifetime(t *testing.T) {
 
 	assert.NoError(t, c.OnClose(fn0))
 	assert.NoError(t, c.Close())
+	assert.True(t, *callback0Called)
+
 	err := c.OnClose(fn1)
 	assert.Error(t, err)
-	assert.IsType(t, alreadyClosedError{}, err)
+	assert.IsType(t, newAlreadyClosedError(), err)
+	assert.False(t, *callback1Called)
 }
 
 // TestCloser_OnClose_Hammer hammers the Closer to expose any data races.
