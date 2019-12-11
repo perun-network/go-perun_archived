@@ -72,7 +72,7 @@ func (p *producer) Subscribe(c Consumer, predicate msg.Predicate) error {
 	}
 
 	if err := c.OnClose(func() { p.delete(c) }); err != nil {
-		return err
+		return errors.WithMessage(err, "registering Consumer.OnClose() hook failed")
 	}
 
 	p.consumers = append(p.consumers, subscription{consumer: c, predicate: predicate})
