@@ -14,6 +14,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	_ "perun.network/go-perun/backend/sim/wallet" // backend init
 	wallettest "perun.network/go-perun/wallet/test"
@@ -204,9 +205,9 @@ func TestPeer_ClosedByRecvLoopOnConnClose(t *testing.T) {
 	addr := wallettest.NewRandomAddress(rng)
 	conn0, conn1 := newPipeConnPair()
 	peer := newPeer(addr, conn0, nil)
-	peer.OnClose(func() {
+	require.NoError(t, peer.OnClose(func() {
 		close(onCloseCalled)
-	})
+	}))
 
 	go func() {
 		peer.recvLoop()

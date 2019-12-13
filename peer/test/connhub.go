@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"perun.network/go-perun/log"
 	"perun.network/go-perun/peer"
 	"perun.network/go-perun/pkg/sync"
 )
@@ -39,7 +40,10 @@ func (h *ConnHub) NewListener(addr peer.Address) *Listener {
 	}
 
 	// Remove the listener from the hub after it's closed.
-	listener.OnClose(func() { h.erase(addr) })
+	if err := listener.OnClose(func() { h.erase(addr) }); err != nil {
+		log.Fatalf(
+			"when registering Listener.OnClose() handler for address %v: %v", addr, err)
+	}
 
 	return listener
 }
@@ -56,7 +60,10 @@ func (h *ConnHub) NewDialer() *Dialer {
 
 	dialer := &Dialer{hub: h}
 	h.dialers.insert(dialer)
-	dialer.OnClose(func() { h.dialers.erase(dialer) })
+	if err := dialer.OnClose(func() { h.dialers.erase(dialer) }); err != nil {
+		log.Fatalf(
+			"when registering Dialer.OnClose() handler: %v", err)
+	}
 
 	return dialer
 }
