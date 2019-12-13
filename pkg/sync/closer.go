@@ -39,7 +39,7 @@ func (c *Closer) Closed() <-chan struct{} {
 	return c.closed
 }
 
-// Close starts all registered callbacks in goroutines.
+// Close starts all registered callbacks.
 // If Close was already called before, returns an AlreadyClosedError, otherwise,
 // returns nil.
 func (c *Closer) Close() error {
@@ -52,27 +52,22 @@ func (c *Closer) Close() error {
 	c.onClosedMtx.Lock()
 	defer c.onClosedMtx.Unlock()
 
-	barrier := new(sync.WaitGroup)
-	barrier.Add(len(c.onClosed))
-
 	for _, fn := range c.onClosed {
 		fn()
 	}
-	barrier.Wait()
 
 	close(c.closed)
 
 	return nil
 }
 
-// IsClosed returns whether the Closer is currently closed.
+// IsClosed returns whether the Closer is closed.
 func (c *Closer) IsClosed() bool {
 	return c.isClosed.IsSet()
 }
 
 // OnClose registers the passed callback to be called when the Closer is closed.
-// If the Closer is already closed, immediately executes the callback in a
-// goroutine.
+// If the Closer is already closed, it returns an AlreadyClosedError.
 func (c *Closer) OnClose(handler func()) error {
 	c.onClosedMtx.Lock()
 	defer c.onClosedMtx.Unlock()
