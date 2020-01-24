@@ -260,7 +260,11 @@ func testClientMultiplexing(
 		id := simwallet.NewRandomAccount(rng)
 		listeners[i] = New(
 			id, connHub.NewDialer(), &DummyProposalHandler{t}, &DummyFunder{t}, &DummySettler{t})
-		go listeners[i].Listen(connHub.NewListener(listeners[i].id.Address()))
+		// initialize the listener instance in the main goroutine if it is
+		// initialized in a goroutine, the goroutine may be put to sleep and
+		// the dialer may complain about a nonexistent listener
+		l := connHub.NewListener(listeners[i].id.Address())
+		go listeners[i].Listen(l)
 	}
 	for i := range dialers {
 		id := simwallet.NewRandomAccount(rng)
