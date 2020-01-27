@@ -60,8 +60,8 @@ func NewSimpleHandler(
 
 func (h *SimpleProposalHandler) Handle(
 	proposal *ChannelProposalReq, responder *ProposalResponder) {
+	defer close(h.done)
 	h.callback(proposal, responder)
-	close(h.done)
 }
 
 func (h *SimpleProposalHandler) Done() <-chan struct{} {
