@@ -6,17 +6,39 @@
 package client
 
 import (
+	"context"
 	"math/big"
 	"math/rand"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	channeltest "perun.network/go-perun/channel/test"
 	"perun.network/go-perun/peer"
+	peertest "perun.network/go-perun/peer/test"
 	"perun.network/go-perun/wallet"
 	wallettest "perun.network/go-perun/wallet/test"
 )
+
+func TestClient_ProposeChannel_InvalidProposal(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x20200123a))
+	account := wallettest.NewRandomAccount(rng)
+	proposal := newRandomValidChannelProposalReq(rng, 2).AsProp(account)
+	invalidProposal := proposal
+	invalidProposal.ChallengeDuration = 0
+	connHub := new(peertest.ConnHub)
+	c := New(
+		wallettest.NewRandomAccount(rng),
+		connHub.NewDialer(),
+		new(DummyProposalHandler),
+		new(DummyFunder),
+		new(DummySettler),
+	)
+
+	_, err := c.ProposeChannel(context.Background(), invalidProposal)
+	assert.Error(t, err)
+}
 
 func TestClient_validTwoPartyProposal(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xdeadbeef))
