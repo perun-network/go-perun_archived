@@ -151,6 +151,93 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 
 		<-proposalHandler.done
 	})
+
+	t.Run("accept-proposal-invalid-sid", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		partAccount := wallettest.NewRandomAccount(rng)
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+
+			invalidSessID := proposal.SessID()
+			invalidSessID[0] = ^invalidSessID[0]
+			msgAccept := &ChannelProposalAcc{
+				SessID:          invalidSessID,
+				ParticipantAddr: partAccount.Address(),
+			}
+			assert.NoError(t, responder.peer.Send(ctx, msgAccept))
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client1 := New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+		defer client1.Close()
+
+		proposal.PeerAddrs[1] = client1.id.Address()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		// this test will cause a timeout of `exchangeTwoPartyProposal` (if it
+		// is implemented properly). use a shorter timeout to avoid long wait
+		// times.
+		ctxShort, cancelShort := context.WithTimeout(
+			context.Background(), 100*time.Millisecond)
+		defer cancelShort()
+		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
+		assert.Nil(t, addresses)
+		assert.Error(t, err)
+		require.Contains(t, err.Error(), "timeout")
+
+		<-proposalHandler.done
+	})
+
+	t.Run("reject-proposal-invalid-sid", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+
+			invalidSessID := proposal.SessID()
+			invalidSessID[0] = ^invalidSessID[0]
+			msgReject := &ChannelProposalRej{
+				SessID: invalidSessID,
+				Reason: "reject-proposal-invalid-sid-reason",
+			}
+			assert.NoError(t, responder.peer.Send(ctx, msgReject))
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client1 := New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+		defer client1.Close()
+
+		proposal.PeerAddrs[1] = client1.id.Address()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		// this test will cause a timeout of `exchangeTwoPartyProposal` (if it
+		// is implemented properly). use a shorter timeout to avoid long wait
+		// times.
+		ctxShort, cancelShort := context.WithTimeout(
+			context.Background(), 100*time.Millisecond)
+		defer cancelShort()
+		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
+		assert.Nil(t, addresses)
+		assert.Error(t, err)
+		require.Contains(t, err.Error(), "timeout")
+
+		<-proposalHandler.done
+	})
 }
 
 func TestClient_validTwoPartyProposal(t *testing.T) {
