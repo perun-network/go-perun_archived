@@ -41,44 +41,31 @@ func TestClient_ProposeChannel_InvalidProposal(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// BooleanProposalHandler is a proposal handler which can be configured to
-// reject all or accept all proposals.
-type BooleanProposalHandler struct {
-	t               *testing.T
-	ctx             context.Context
-	acceptProposals bool
-	partAccount     wallet.Account
-	done            chan struct{}
+// SimpleProposalHandler calls a given callback whenever it is invoked as a
+// handler and after callback execution, the channel returned by Done() is
+// closed.
+type SimpleProposalHandler struct {
+	callback func(*ChannelProposalReq, *ProposalResponder)
+	// The proposal handler may be executed concurrently. This channel allows
+	// on to check if the handler finished execution.
+	done chan struct{}
 }
 
-var _ ProposalHandler = (*BooleanProposalHandler)(nil)
+var _ ProposalHandler = (*SimpleProposalHandler)(nil)
 
-func NewBooleanHandler(
-	t *testing.T, rng *rand.Rand, ctx context.Context, acceptProposals bool) *BooleanProposalHandler {
-	return &BooleanProposalHandler{
-		t:               t,
-		ctx:             ctx,
-		acceptProposals: acceptProposals,
-		partAccount:     wallettest.NewRandomAccount(rng),
-		done:            make(chan struct{}),
-	}
+func NewSimpleHandler(
+	f func(*ChannelProposalReq, *ProposalResponder)) *SimpleProposalHandler {
+	return &SimpleProposalHandler{f, make(chan struct{})}
 }
 
-func (h *BooleanProposalHandler) Handle(
+func (h *SimpleProposalHandler) Handle(
 	proposal *ChannelProposalReq, responder *ProposalResponder) {
-	assert.NoError(h.t, proposal.Valid())
-
-	if h.acceptProposals {
-		msgAccept := &ChannelProposalAcc{
-			SessID:          proposal.SessID(),
-			ParticipantAddr: h.partAccount.Address(),
-		}
-		assert.NoError(h.t, responder.peer.Send(h.ctx, msgAccept))
-	} else {
-		assert.NoError(h.t, responder.Reject(h.ctx, "rejection reason"))
-	}
-
+	h.callback(proposal, responder)
 	close(h.done)
+}
+
+func (h *SimpleProposalHandler) Done() <-chan struct{} {
+	return h.done
 }
 
 func TestClient_exchangeTwoPartyProposal(t *testing.T) {
@@ -100,7 +87,17 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 	t.Run("accept-proposal", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		proposalHandler := NewBooleanHandler(t, rng, ctx, true)
+		partAccount := wallettest.NewRandomAccount(rng)
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+
+			msgAccept := &ChannelProposalAcc{
+				SessID:          proposal.SessID(),
+				ParticipantAddr: partAccount.Address(),
+			}
+			assert.NoError(t, responder.peer.Send(ctx, msgAccept))
+		}
+		proposalHandler := NewSimpleHandler(callback)
 		client1 := New(
 			wallettest.NewRandomAccount(rng),
 			connHub.NewDialer(),
@@ -119,7 +116,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		assert.NoError(t, err)
 		require.Equal(t, len(proposal.PeerAddrs), len(addresses))
 		assert.Equal(t, proposal.ParticipantAddr, addresses[0])
-		assert.Equal(t, proposalHandler.partAccount.Address(), addresses[1])
+		assert.Equal(t, partAccount.Address(), addresses[1])
 
 		<-proposalHandler.done
 	})
@@ -127,7 +124,11 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 	t.Run("reject-proposal", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		proposalHandler := NewBooleanHandler(t, rng, ctx, false)
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+			assert.NoError(t, responder.Reject(ctx, "rejection reason"))
+		}
+		proposalHandler := NewSimpleHandler(callback)
 		client1 := New(
 			wallettest.NewRandomAccount(rng),
 			connHub.NewDialer(),
@@ -147,6 +148,8 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
+
+		<-proposalHandler.done
 	})
 }
 
