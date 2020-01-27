@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,6 +39,115 @@ func TestClient_ProposeChannel_InvalidProposal(t *testing.T) {
 
 	_, err := c.ProposeChannel(context.Background(), invalidProposal)
 	assert.Error(t, err)
+}
+
+// BooleanProposalHandler is a proposal handler which can be configured to
+// reject all or accept all proposals.
+type BooleanProposalHandler struct {
+	t               *testing.T
+	ctx             context.Context
+	acceptProposals bool
+	partAccount     wallet.Account
+	done            chan struct{}
+}
+
+var _ ProposalHandler = (*BooleanProposalHandler)(nil)
+
+func NewBooleanHandler(
+	t *testing.T, rng *rand.Rand, ctx context.Context, acceptProposals bool) *BooleanProposalHandler {
+	return &BooleanProposalHandler{
+		t:               t,
+		ctx:             ctx,
+		acceptProposals: acceptProposals,
+		partAccount:     wallettest.NewRandomAccount(rng),
+		done:            make(chan struct{}),
+	}
+}
+
+func (h *BooleanProposalHandler) Handle(
+	proposal *ChannelProposalReq, responder *ProposalResponder) {
+	assert.NoError(h.t, proposal.Valid())
+
+	if h.acceptProposals {
+		msgAccept := &ChannelProposalAcc{
+			SessID:          proposal.SessID(),
+			ParticipantAddr: h.partAccount.Address(),
+		}
+		assert.NoError(h.t, responder.peer.Send(h.ctx, msgAccept))
+	} else {
+		assert.NoError(h.t, responder.Reject(h.ctx, "rejection reason"))
+	}
+
+	close(h.done)
+}
+
+func TestClient_exchangeTwoPartyProposal(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x20200123b))
+	timeout := time.Duration(1 * time.Second)
+	connHub := new(peertest.ConnHub)
+	client0 := New(
+		wallettest.NewRandomAccount(rng),
+		connHub.NewDialer(),
+		new(DummyProposalHandler),
+		new(DummyFunder),
+		new(DummySettler),
+	)
+	defer client0.Close()
+
+	proposal := newRandomValidChannelProposalReq(rng, 2)
+	proposal.PeerAddrs[0] = client0.id.Address()
+
+	t.Run("accept-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		proposalHandler := NewBooleanHandler(t, rng, ctx, true)
+		client1 := New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+		defer client1.Close()
+
+		proposal.PeerAddrs[1] = client1.id.Address()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
+		assert.NoError(t, err)
+		require.Equal(t, len(proposal.PeerAddrs), len(addresses))
+		assert.Equal(t, proposal.ParticipantAddr, addresses[0])
+		assert.Equal(t, proposalHandler.partAccount.Address(), addresses[1])
+
+		<-proposalHandler.done
+	})
+
+	t.Run("reject-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		proposalHandler := NewBooleanHandler(t, rng, ctx, false)
+		client1 := New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+		defer client1.Close()
+
+		proposal.PeerAddrs[1] = client1.id.Address()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		invalidProposal := *proposal
+		invalidProposal.ChallengeDuration = 0
+		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
+		assert.Nil(t, addresses)
+		assert.Error(t, err)
+	})
 }
 
 func TestClient_validTwoPartyProposal(t *testing.T) {
