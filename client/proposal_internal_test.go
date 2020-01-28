@@ -81,8 +81,21 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 	)
 	defer client0.Close()
 
-	proposal := newRandomValidChannelProposalReq(rng, 2)
-	proposal.PeerAddrs[0] = client0.id.Address()
+	makeProposal := func(rng *rand.Rand, peerAddress wallet.Address) *ChannelProposalReq {
+		proposal := newRandomValidChannelProposalReq(rng, 2)
+		proposal.PeerAddrs[0] = client0.id.Address()
+		proposal.PeerAddrs[1] = peerAddress
+		return proposal
+	}
+	makeClient := func(rng *rand.Rand, proposalHandler ProposalHandler) *Client {
+		return New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+	}
 
 	// In the test cases below, as soon as the test case finished,
 	// * contexts are cancelled,
@@ -107,20 +120,13 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Send(ctx, msgAccept))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := New(
-			wallettest.NewRandomAccount(rng),
-			connHub.NewDialer(),
-			proposalHandler,
-			new(DummyFunder),
-			new(DummySettler),
-		)
+		client1 := makeClient(rng, proposalHandler)
 		defer client1.Close()
-
-		proposal.PeerAddrs[1] = client1.id.Address()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
+		proposal := makeProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.NoError(t, err)
 		require.Equal(t, len(proposal.PeerAddrs), len(addresses))
@@ -138,22 +144,13 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.Reject(ctx, "rejection reason"))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := New(
-			wallettest.NewRandomAccount(rng),
-			connHub.NewDialer(),
-			proposalHandler,
-			new(DummyFunder),
-			new(DummySettler),
-		)
+		client1 := makeClient(rng, proposalHandler)
 		defer client1.Close()
-
-		proposal.PeerAddrs[1] = client1.id.Address()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
-		invalidProposal := *proposal
-		invalidProposal.ChallengeDuration = 0
+		proposal := makeProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -177,16 +174,8 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Send(ctx, msgAccept))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := New(
-			wallettest.NewRandomAccount(rng),
-			connHub.NewDialer(),
-			proposalHandler,
-			new(DummyFunder),
-			new(DummySettler),
-		)
+		client1 := makeClient(rng, proposalHandler)
 		defer client1.Close()
-
-		proposal.PeerAddrs[1] = client1.id.Address()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
@@ -197,6 +186,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		ctxShort, cancelShort := context.WithTimeout(
 			context.Background(), 100*time.Millisecond)
 		defer cancelShort()
+		proposal := makeProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -219,16 +209,8 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Send(ctx, msgReject))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := New(
-			wallettest.NewRandomAccount(rng),
-			connHub.NewDialer(),
-			proposalHandler,
-			new(DummyFunder),
-			new(DummySettler),
-		)
+		client1 := makeClient(rng, proposalHandler)
 		defer client1.Close()
-
-		proposal.PeerAddrs[1] = client1.id.Address()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
@@ -239,6 +221,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		ctxShort, cancelShort := context.WithTimeout(
 			context.Background(), 100*time.Millisecond)
 		defer cancelShort()
+		proposal := makeProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -254,25 +237,17 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Close())
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := New(
-			wallettest.NewRandomAccount(rng),
-			connHub.NewDialer(),
-			proposalHandler,
-			new(DummyFunder),
-			new(DummySettler),
-		)
+		client1 := makeClient(rng, proposalHandler)
 		defer client1.Close()
-
-		proposal.PeerAddrs[1] = client1.id.Address()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
+		proposal := makeProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
 	})
-
 }
 
 func TestClient_validTwoPartyProposal(t *testing.T) {
