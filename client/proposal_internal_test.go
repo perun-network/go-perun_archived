@@ -247,6 +247,34 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 
 		<-proposalHandler.done
 	})
+
+	t.Run("connection-close-after-sending-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+			assert.NoError(t, responder.peer.Close())
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client1 := New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+		defer client1.Close()
+
+		proposal.PeerAddrs[1] = client1.id.Address()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
+		assert.Nil(t, addresses)
+		assert.Error(t, err)
+	})
+
 }
 
 func TestClient_validTwoPartyProposal(t *testing.T) {
