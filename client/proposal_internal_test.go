@@ -248,6 +248,47 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
 	})
+
+	t.Run("context-timeout-before-sending-proposal", func(t *testing.T) {
+		client1 := makeClient(
+			rng,
+			NewSimpleHandler(func(_ *ChannelProposalReq, _ *ProposalResponder) {
+				assert.Fail(t, "proposal handler should not be called")
+			}),
+		)
+		defer client1.Close()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		cancel()
+		proposal := makeProposal(rng, client1.id.Address())
+		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
+		assert.Nil(t, addresses)
+		assert.Error(t, err)
+	})
+
+	t.Run("context-timeout-after-sending-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+			cancel()
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client1 := makeClient(rng, proposalHandler)
+		defer client1.Close()
+
+		listener := connHub.NewListener(client1.id.Address())
+		go client1.Listen(listener)
+
+		proposal := makeProposal(rng, client1.id.Address())
+		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
+		assert.Nil(t, addresses)
+		assert.Error(t, err)
+	})
+
 }
 
 func TestClient_validTwoPartyProposal(t *testing.T) {
