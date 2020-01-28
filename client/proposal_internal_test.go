@@ -291,6 +291,149 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 
 }
 
+func TestClient_handleChannelProposal(t *testing.T) {
+	rng := rand.New(rand.NewSource(0x20200128))
+	timeout := time.Duration(1 * time.Second)
+	connHub := new(peertest.ConnHub)
+	// the following instance of client.Client is called a server because all
+	// other instances of Client will connect to it
+	server := New(
+		wallettest.NewRandomAccount(rng),
+		connHub.NewDialer(),
+		new(DummyProposalHandler),
+		new(DummyFunder),
+		new(DummySettler),
+	)
+	defer server.Close()
+
+	listener := connHub.NewListener(server.id.Address())
+	go server.Listen(listener)
+
+	newProposal := func(rng *rand.Rand, peerAddress wallet.Address) *ChannelProposalReq {
+		proposal := newRandomValidChannelProposalReq(rng, 2)
+		proposal.PeerAddrs[0] = server.id.Address()
+		proposal.PeerAddrs[1] = peerAddress
+		return proposal
+	}
+	newClient := func(rng *rand.Rand, proposalHandler ProposalHandler) *Client {
+		return New(
+			wallettest.NewRandomAccount(rng),
+			connHub.NewDialer(),
+			proposalHandler,
+			new(DummyFunder),
+			new(DummySettler),
+		)
+	}
+
+	t.Run("no-handler-call-with-invalid-proposal", func(t *testing.T) {
+		client := newClient(
+			rng,
+			NewSimpleHandler(func(_ *ChannelProposalReq, _ *ProposalResponder) {
+				assert.Fail(t, "the proposal handler should not be called")
+			}),
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		peer, err := client.peers.Get(ctx, server.id.Address())
+		assert.NotNil(t, peer)
+		assert.NoError(t, err)
+
+		invalidProposal := newProposal(rng, client.id.Address())
+		invalidProposal.ChallengeDuration = 0
+		client.handleChannelProposal(peer, invalidProposal)
+		// the proposal handler signals an error if it is called
+	})
+
+	t.Run("check-handler-is-called", func(t *testing.T) {
+		proposalHandler := NewSimpleHandler(
+			func(_ *ChannelProposalReq, _ *ProposalResponder) {})
+		client := newClient(rng, proposalHandler)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		proposal := newProposal(rng, client.id.Address())
+		peer, err := client.peers.Get(ctx, server.id.Address())
+		assert.NotNil(t, peer)
+		assert.NoError(t, err)
+		assert.NoError(t, proposal.Valid())
+		client.handleChannelProposal(peer, proposal)
+
+		select {
+		case <-proposalHandler.Done():
+		case <-ctx.Done():
+			assert.Fail(t, "proposal handler was not called before timeout")
+		}
+	})
+
+	t.Run("handler-repeatedly-accepting-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+
+			id0 := wallettest.NewRandomAccount(rng)
+			responder.Accept(ctx, ProposalAcc{id0})
+
+			id1 := wallettest.NewRandomAccount(rng)
+			assert.Panics(t, func() { responder.Accept(ctx, ProposalAcc{id1}) })
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client := newClient(rng, proposalHandler)
+		proposal := newProposal(rng, client.id.Address())
+		peer, err := client.peers.Get(ctx, server.id.Address())
+		assert.NotNil(t, peer)
+		assert.NoError(t, err)
+		assert.NoError(t, proposal.Valid())
+		client.handleChannelProposal(peer, proposal)
+	})
+
+	t.Run("connection-closed-before-accepting-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+			assert.NoError(t, responder.peer.Close())
+
+			id := wallettest.NewRandomAccount(rng)
+			channel, err := responder.Accept(ctx, ProposalAcc{id})
+			assert.Nil(t, channel)
+			assert.Error(t, err)
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client := newClient(rng, proposalHandler)
+
+		peer, err := client.peers.Get(ctx, server.id.Address())
+		assert.NotNil(t, peer)
+		assert.NoError(t, err)
+
+		proposal := newProposal(rng, client.id.Address())
+		client.handleChannelProposal(peer, proposal)
+	})
+
+	t.Run("context-done-before-accepting-proposal", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+			assert.NoError(t, proposal.Valid())
+
+			id := wallettest.NewRandomAccount(rng)
+			cancel()
+			channel, err := responder.Accept(ctx, ProposalAcc{id})
+			assert.Nil(t, channel)
+			assert.Error(t, err)
+		}
+		proposalHandler := NewSimpleHandler(callback)
+		client := newClient(rng, proposalHandler)
+
+		peer, err := client.peers.Get(ctx, server.id.Address())
+		assert.NotNil(t, peer)
+		assert.NoError(t, err)
+
+		proposal := newProposal(rng, client.id.Address())
+		client.handleChannelProposal(peer, proposal)
+	})
+
+}
+
 func TestClient_validTwoPartyProposal(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xdeadbeef))
 
