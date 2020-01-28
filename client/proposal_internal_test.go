@@ -84,6 +84,15 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 	proposal := newRandomValidChannelProposalReq(rng, 2)
 	proposal.PeerAddrs[0] = client0.id.Address()
 
+	// In the test cases below, as soon as the test case finished,
+	// * contexts are cancelled,
+	// * case-specific clients are closed (named `client1`).
+	//
+	// For this reason, you *must* wait for the proposal handler to
+	// finish before exiting a test case *if* the proposal handler sends or
+	// receives data. Otherwise, the send/recv call may return an error due to
+	// a cancelled context or closed clients/peers/dialers.
+
 	t.Run("accept-proposal", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
