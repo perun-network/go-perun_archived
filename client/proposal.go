@@ -246,7 +246,7 @@ func (c *Client) exchangeTwoPartyProposal(
 
 	_, rawResponse := receiver.Next(ctx)
 	if rawResponse == nil {
-		return nil, errors.New("timeout when waiting for proposal response")
+		return nil, errors.New("error when waiting for proposal response")
 	}
 	if rej, ok := rawResponse.(*ChannelProposalRej); ok {
 		return nil, errors.Errorf("channel proposal rejected: %v", rej.Reason)

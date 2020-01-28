@@ -200,7 +200,6 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
-		require.Contains(t, err.Error(), "timeout")
 
 		<-proposalHandler.done
 	})
@@ -243,7 +242,6 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
-		require.Contains(t, err.Error(), "timeout")
 
 		<-proposalHandler.done
 	})
