@@ -94,13 +94,13 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 	)
 	defer client0.Close()
 
-	makeProposal := func(rng *rand.Rand, peerAddress wallet.Address) *ChannelProposalReq {
+	newProposal := func(rng *rand.Rand, peerAddress wallet.Address) *ChannelProposalReq {
 		proposal := newRandomValidChannelProposalReq(rng, 2)
 		proposal.PeerAddrs[0] = client0.id.Address()
 		proposal.PeerAddrs[1] = peerAddress
 		return proposal
 	}
-	makeClient := func(rng *rand.Rand, proposalHandler ProposalHandler) *Client {
+	newClient := func(rng *rand.Rand, proposalHandler ProposalHandler) *Client {
 		return New(
 			wallettest.NewRandomAccount(rng),
 			connHub.NewDialer(),
@@ -133,13 +133,13 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Send(ctx, msgAccept))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := makeClient(rng, proposalHandler)
+		client1 := newClient(rng, proposalHandler)
 		defer client1.Close()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.NoError(t, err)
 		require.Equal(t, len(proposal.PeerAddrs), len(addresses))
@@ -157,13 +157,13 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.Reject(ctx, "rejection reason"))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := makeClient(rng, proposalHandler)
+		client1 := newClient(rng, proposalHandler)
 		defer client1.Close()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -187,7 +187,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Send(ctx, msgAccept))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := makeClient(rng, proposalHandler)
+		client1 := newClient(rng, proposalHandler)
 		defer client1.Close()
 
 		listener := connHub.NewListener(client1.id.Address())
@@ -199,7 +199,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		ctxShort, cancelShort := context.WithTimeout(
 			context.Background(), 100*time.Millisecond)
 		defer cancelShort()
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -222,7 +222,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Send(ctx, msgReject))
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := makeClient(rng, proposalHandler)
+		client1 := newClient(rng, proposalHandler)
 		defer client1.Close()
 
 		listener := connHub.NewListener(client1.id.Address())
@@ -234,7 +234,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 		ctxShort, cancelShort := context.WithTimeout(
 			context.Background(), 100*time.Millisecond)
 		defer cancelShort()
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctxShort, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -250,20 +250,20 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			assert.NoError(t, responder.peer.Close())
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := makeClient(rng, proposalHandler)
+		client1 := newClient(rng, proposalHandler)
 		defer client1.Close()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
 	})
 
 	t.Run("context-timeout-before-sending-proposal", func(t *testing.T) {
-		client1 := makeClient(
+		client1 := newClient(
 			rng,
 			NewSimpleHandler(func(_ *ChannelProposalReq, _ *ProposalResponder) {
 				assert.Fail(t, "proposal handler should not be called")
@@ -276,7 +276,7 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		cancel()
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
@@ -290,13 +290,13 @@ func TestClient_exchangeTwoPartyProposal(t *testing.T) {
 			cancel()
 		}
 		proposalHandler := NewSimpleHandler(callback)
-		client1 := makeClient(rng, proposalHandler)
+		client1 := newClient(rng, proposalHandler)
 		defer client1.Close()
 
 		listener := connHub.NewListener(client1.id.Address())
 		go client1.Listen(listener)
 
-		proposal := makeProposal(rng, client1.id.Address())
+		proposal := newProposal(rng, client1.id.Address())
 		addresses, err := client0.exchangeTwoPartyProposal(ctx, proposal)
 		assert.Nil(t, addresses)
 		assert.Error(t, err)
