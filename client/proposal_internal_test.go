@@ -385,6 +385,9 @@ func TestClient_handleChannelProposal(t *testing.T) {
 				callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
 					assert.NoError(t, proposal.Valid())
 
+					// do not use PRNG from surrounding scope because the
+					// callback might be executed concurrently
+					rng := rand.New(rand.NewSource(0x20200129))
 					id0 := wallettest.NewRandomAccount(rng)
 					if acceptFirstTime {
 						responder.Accept(ctx, ProposalAcc{id0})
@@ -442,6 +445,9 @@ func TestClient_handleChannelProposal(t *testing.T) {
 		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
 			assert.NoError(t, proposal.Valid())
 
+			// do not use PRNG from surrounding scope because the
+			// callback might be executed concurrently
+			rng := rand.New(rand.NewSource(0x20200129))
 			id := wallettest.NewRandomAccount(rng)
 			cancel()
 			channel, err := responder.Accept(ctx, ProposalAcc{id})
