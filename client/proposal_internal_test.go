@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,16 +23,28 @@ import (
 	wallettest "perun.network/go-perun/wallet/test"
 )
 
+type doNotUseDialer struct {
+	t *testing.T
+}
+
+func (d *doNotUseDialer) Dial(context.Context, peer.Address) (peer.Conn, error) {
+	d.t.Error("the dialer must not be called")
+	return nil, errors.New("doNotUseDialer.Dial() must not be called")
+}
+
+func (d *doNotUseDialer) Close() error {
+	return errors.New("doNotUseDialer.Close() must not be called")
+}
+
 func TestClient_ProposeChannel_InvalidProposal(t *testing.T) {
 	rng := rand.New(rand.NewSource(0x20200123a))
 	account := wallettest.NewRandomAccount(rng)
 	proposal := newRandomValidChannelProposalReq(rng, 2).AsProp(account)
 	invalidProposal := proposal
 	invalidProposal.ChallengeDuration = 0
-	connHub := new(peertest.ConnHub)
 	c := New(
 		wallettest.NewRandomAccount(rng),
-		connHub.NewDialer(),
+		&doNotUseDialer{t},
 		new(DummyProposalHandler),
 		new(DummyFunder),
 		new(DummySettler),
