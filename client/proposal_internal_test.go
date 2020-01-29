@@ -377,27 +377,41 @@ func TestClient_handleChannelProposal(t *testing.T) {
 		}
 	})
 
-	t.Run("handler-repeatedly-accepting-proposal", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
-			assert.NoError(t, proposal.Valid())
+	for _, acceptFirstTime := range []bool{true, false} {
+		for _, acceptSecondTime := range []bool{true, false} {
+			t.Run("handler-repeatedly-accepting-proposal", func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+				callback := func(proposal *ChannelProposalReq, responder *ProposalResponder) {
+					assert.NoError(t, proposal.Valid())
 
-			id0 := wallettest.NewRandomAccount(rng)
-			responder.Accept(ctx, ProposalAcc{id0})
+					id0 := wallettest.NewRandomAccount(rng)
+					if acceptFirstTime {
+						responder.Accept(ctx, ProposalAcc{id0})
+					} else {
+						responder.Reject(ctx, "reject-reason")
+					}
 
-			id1 := wallettest.NewRandomAccount(rng)
-			assert.Panics(t, func() { responder.Accept(ctx, ProposalAcc{id1}) })
+					id1 := wallettest.NewRandomAccount(rng)
+					if acceptSecondTime {
+						assert.Panics(
+							t, func() { responder.Accept(ctx, ProposalAcc{id1}) })
+					} else {
+						assert.Panics(
+							t, func() { responder.Reject(ctx, "another-reason") })
+					}
+				}
+				proposalHandler := NewSimpleHandler(callback)
+				client := newClient(rng, proposalHandler)
+				proposal := newProposal(rng, client.id.Address())
+				peer, err := client.peers.Get(ctx, server.id.Address())
+				assert.NotNil(t, peer)
+				assert.NoError(t, err)
+				assert.NoError(t, proposal.Valid())
+				client.handleChannelProposal(peer, proposal)
+			})
 		}
-		proposalHandler := NewSimpleHandler(callback)
-		client := newClient(rng, proposalHandler)
-		proposal := newProposal(rng, client.id.Address())
-		peer, err := client.peers.Get(ctx, server.id.Address())
-		assert.NotNil(t, peer)
-		assert.NoError(t, err)
-		assert.NoError(t, proposal.Valid())
-		client.handleChannelProposal(peer, proposal)
-	})
+	}
 
 	t.Run("connection-closed-before-accepting-proposal", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
