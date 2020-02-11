@@ -20,7 +20,7 @@ func init() {
 // Since ping and pong messages are essentially the same, this is a common
 // implementation for both.
 type pingPongMsg struct {
-	Created time.Time
+	Created time.Time // Timestamp when the message was created
 }
 
 func (m pingPongMsg) Encode(writer io.Writer) error {
