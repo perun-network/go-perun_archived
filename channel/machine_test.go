@@ -28,5 +28,9 @@ func TestMachineClone(t *testing.T) {
 		m, err := channel.NewMachine(acc, params)
 		require.NoError(t, err)
 		pkgtest.VerifyClone(t, m)
+
+		sm, err := channel.NewStateMachine(acc, params)
+		require.NoError(t, err)
+		pkgtest.VerifyClone(t, sm)
 	}
 }
