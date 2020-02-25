@@ -26,7 +26,7 @@ func NewStateMachine(acc wallet.Account, params Params) (*StateMachine, error) {
 		return nil, errors.New("app must be StateApp")
 	}
 
-	m, err := newMachine(acc, params)
+	m, err := NewMachine(acc, params)
 	if err != nil {
 		return nil, err
 	}

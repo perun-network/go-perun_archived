@@ -88,8 +88,8 @@ type machine struct {
 	log log.Logger
 }
 
-// newMachine returns a new uninitialized machine for the given parameters.
-func newMachine(acc wallet.Account, params Params) (*machine, error) {
+// NewMachine returns a new uninitialized machine for the given parameters.
+func NewMachine(acc wallet.Account, params Params) (*machine, error) {
 	idx := wallet.IndexOfAddr(params.Parts, acc.Address())
 	if idx < 0 {
 		return nil, errors.New("account not part of participant set")

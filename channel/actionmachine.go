@@ -28,7 +28,7 @@ func NewActionMachine(acc wallet.Account, params Params) (*ActionMachine, error)
 		return nil, errors.New("app must be ActionApp")
 	}
 
-	m, err := newMachine(acc, params)
+	m, err := NewMachine(acc, params)
 	if err != nil {
 		return nil, err
 	}
