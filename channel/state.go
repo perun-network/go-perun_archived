@@ -129,3 +129,21 @@ func (s *State) Decode(r io.Reader) error {
 	s.Data, err = s.App.DecodeData(r)
 	return errors.WithMessage(err, "app decode data")
 }
+
+// Clone returns a deep copy of Transaction
+func (t *Transaction) Clone() *Transaction {
+	var clonedSigs []wallet.Sig
+	if t.Sigs != nil {
+		clonedSigs = make([]wallet.Sig, len(t.Sigs))
+		for i := range t.Sigs {
+			if t.Sigs[i] != nil {
+				clonedSigs[i] = make(wallet.Sig, len(t.Sigs[i]))
+				copy(clonedSigs[i], t.Sigs[i])
+			}
+		}
+	}
+	return &Transaction{
+		State: t.State.Clone(),
+		Sigs:  clonedSigs,
+	}
+}
