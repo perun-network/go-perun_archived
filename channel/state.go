@@ -86,6 +86,25 @@ func newState(params *Params, initBals Allocation, initData Data) (*State, error
 	}, nil
 }
 
+func NewState(params *Params, initBals Allocation, initData Data) (*State, error) {
+	// sanity checks
+	n := len(params.Parts)
+	if n != len(initBals.OfParts) {
+		return nil, errors.New("number of participants in parameters and initial balances don't match")
+	}
+	if err := initBals.Valid(); err != nil {
+		return nil, err
+	}
+
+	return &State{
+		ID:         params.ID(),
+		Version:    0,
+		App:        params.App,
+		Allocation: initBals,
+		Data:       initData,
+	}, nil
+}
+
 // Clone makes a deep copy of the State object.
 // If it is nil, it returns nil.
 // App implementations should use this method when creating the next state from
