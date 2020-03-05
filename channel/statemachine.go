@@ -37,8 +37,9 @@ func NewStateMachine(acc wallet.Account, params Params) (*StateMachine, error) {
 	}, nil
 }
 
-// Init sets the initial staging state to the given balance and data.
-// It returns the initial state and own signature on it.
+// Init sets the initial staging State to the given balance and data.
+// It checks that the generated State is valid by calling ValidInit of the app.
+// Returns an error if the State is not valid or an other error occurred.
 func (m *StateMachine) Init(initBals Allocation, initData Data) error {
 	if err := m.expect(PhaseTransition{InitActing, InitSigning}); err != nil {
 		return err
