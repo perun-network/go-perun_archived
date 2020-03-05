@@ -167,11 +167,12 @@ func checkInitActing(r *round, m *channel.StateMachine, depth uint) (bool, error
 	// Machine that will go to 'InitSigning' phase
 	{
 		cloned := m.Clone()
+		clonedR := r.Clone()
 		r.InitAlloc = test.NewRandomAllocation(r.rng, len(r.Params.Parts))
-		if err := goInitActToInitSig(r, cloned); err != nil {
+		if err := goInitActToInitSig(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkInitSigning(r, cloned, depth-1); err != nil {
+		if _, err := checkInitSigning(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
@@ -194,20 +195,22 @@ func checkInitSigning(r *round, m *channel.StateMachine, depth uint) (bool, erro
 	// Machine that will self transition
 	{
 		cloned := m.Clone()
-		if err := goSigningToSigning(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goSigningToSigning(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkInitSigning(r, cloned, depth-1); err != nil {
+		if _, err := checkInitSigning(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
 	// Machine that will go to 'Funding' phase
 	{
 		cloned := m.Clone()
-		if err := goInitSigToFunding(r, cloned); err == nil {
+		clonedR := r.Clone()
+		if err := goInitSigToFunding(clonedR, cloned); err == nil {
 			return false, err
 		}
-		if _, err := checkFunding(r, cloned, depth-1); err != nil {
+		if _, err := checkFunding(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
@@ -230,10 +233,11 @@ func checkFunding(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	// Machine that will go to 'Acting' phase
 	{
 		cloned := m.Clone()
-		if err := goFundingToActing(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goFundingToActing(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkActing(r, cloned, depth-1); err != nil {
+		if _, err := checkActing(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
@@ -256,10 +260,11 @@ func checkActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	// Machine that will go to 'Signing' phase
 	{
 		cloned := m.Clone()
-		if err := goActingToSigning(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goActingToSigning(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkSigning(r, cloned, depth-1); err != nil {
+		if _, err := checkSigning(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
@@ -282,30 +287,33 @@ func checkSigning(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	// Machine that will go to 'Acting' phase
 	{
 		cloned := m.Clone()
-		if err := goSigningToActing(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goSigningToActing(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkActing(r, cloned, depth-1); err != nil {
+		if _, err := checkActing(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
 	// Machine that will go to 'Final' phase
 	{
 		cloned := m.Clone()
-		if err := goSigningToFinal(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goSigningToFinal(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkFinal(r, cloned, depth-1); err != nil {
+		if _, err := checkFinal(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
 	// Machine that will go to 'Signing' phase
 	{
 		cloned := m.Clone()
-		if err := goSigningToSigning(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goSigningToSigning(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkSigning(r, cloned, depth-1); err != nil {
+		if _, err := checkSigning(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
@@ -328,10 +336,11 @@ func checkFinal(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	// Machine that will go to 'Settled' phase
 	{
 		cloned := m.Clone()
-		if err := goFinalToSettled(r, cloned); err != nil {
+		clonedR := r.Clone()
+		if err := goFinalToSettled(clonedR, cloned); err != nil {
 			return false, err
 		}
-		if _, err := checkSettled(r, cloned, depth-1); err != nil {
+		if _, err := checkSettled(clonedR, cloned, depth-1); err != nil {
 			return false, err
 		}
 	}
