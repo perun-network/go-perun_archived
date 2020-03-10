@@ -62,6 +62,7 @@ func TestStateMachine(t *testing.T) {
 	initAlloc := test.NewRandomAllocation(rng, len(params.Parts))
 	initData := channel.NewMockOp(channel.OpValid)
 	state, err := channel.NewState(params, *initAlloc, initData)
+	state.Version = 0
 	require.NoError(t, err)
 
 	r := &round{
@@ -76,7 +77,7 @@ func TestStateMachine(t *testing.T) {
 	}
 
 	pkgtest.VerifyClone(t, r)
-	depthReached, err := checkInitActing(r, m, 10)
+	depthReached, err := checkInitActing(r, m, 100)
 	if depthReached {
 		t.Log("Search depth reached")
 	}
@@ -115,6 +116,8 @@ func (r *round) Clone() *round {
 // Return value: (depth_reached bool, err error)
 type Transition func(*round, *channel.StateMachine) error
 
+type State func(*round, *channel.StateMachine, uint) (bool, error)
+
 var transitions []Transition
 
 func init() {
@@ -124,7 +127,6 @@ func init() {
 		goFundingToActing,
 		goInitActToInitSig,
 		goInitSigToFunding,
-		//goInitSigToInitSig,
 		goSigningToActing,
 		goSigningToFinal,
 		goSigningToSigning,
@@ -134,235 +136,136 @@ func init() {
 func callAllExcept(expect []Transition, r *round, m *channel.StateMachine) error {
 outer:
 	for _, ts := range transitions {
-		t := filepath.Ext(runtime.FuncForPC(reflect.ValueOf(ts).Pointer()).Name())
+		t := functionName(ts)
 		for _, ex := range expect {
-			e := filepath.Ext(runtime.FuncForPC(reflect.ValueOf(ex).Pointer()).Name())
+			e := functionName(ex)
 			if t == e {
-				r.t.Logf("skip  %s", e)
 				continue outer
 			}
 		}
 		r.t.Logf("try   %s", t)
+		r = r.Clone()
+		m = m.Clone()
 		if err := ts(r, m); err == nil {
 			return errors.Errorf("transition '%s' from phase %s did not abort or produce error", t, m.Phase())
 		}
 	}
-	r.t.Log()
 
 	return nil
+}
+
+func transitionTo(arrow Transition, state State, r *round, m *channel.StateMachine, depth uint) (bool, error) {
+	if depth == 0 {
+		return true, nil
+	}
+	if err := callAllExcept([]Transition{arrow}, r, m); err != nil {
+		return false, err
+	}
+	r.t.Logf("take  %s -> %s\n\n", functionName(arrow), functionName(state))
+
+	clonedR := r.Clone()
+	cloned := m.Clone()
+
+	if err := arrow(clonedR, cloned); err != nil {
+		return false, err
+	}
+
+	if _, err := state(clonedR, cloned, depth-1); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func functionName(f interface{}) string {
+	return filepath.Ext(runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name())[1:]
 }
 
 func checkInitActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.InitActing {
 		return false, errors.New("Started in wrong phase")
 	}
-	if depth == 0 {
-		return true, nil
-	}
 
-	// Check that all invalid transitions are invalid
-	if err := callAllExcept([]Transition{goInitActToInitSig}, r, m); err != nil {
-		return false, errors.WithMessagef(err, "now in phase %v", m.Phase())
-	}
 	// Machine that will go to 'InitSigning' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		r.InitAlloc = test.NewRandomAllocation(r.rng, len(r.Params.Parts))
-		if err := goInitActToInitSig(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkInitSigning(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-
-	return false, nil
+	r.InitAlloc = test.NewRandomAllocation(r.rng, len(r.Params.Parts))
+	return transitionTo(goInitActToInitSig, checkInitSigning, r, m, depth)
 }
 
 func checkInitSigning(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.InitSigning {
 		return false, errors.New("Started in wrong phase")
 	}
-	if depth == 0 {
-		return true, nil
-	}
 
-	// Check that all invalid transitions are invalid
-	if err := callAllExcept([]Transition{goSigningToSigning, goInitSigToFunding}, r, m); err != nil {
-		return false, err
+	if r.SigningIdx < len(r.Params.Parts) {
+		// Machine that will self transition only when signatures are missing
+		return transitionTo(goSigningToSigning, checkInitSigning, r, m, depth)
+	} else {
+		// Machine that will go to 'Funding' phase only when all signatures are added
+		return transitionTo(goInitSigToFunding, checkFunding, r, m, depth)
 	}
-	// Machine that will self transition
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goSigningToSigning(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkInitSigning(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-	// Machine that will go to 'Funding' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goInitSigToFunding(clonedR, cloned); err == nil {
-			return false, err
-		}
-		if _, err := checkFunding(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-
-	return false, nil
 }
 
 func checkFunding(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.Funding {
 		return false, errors.New("Started in wrong phase")
 	}
-	if depth == 0 {
-		return true, nil
-	}
+	r.SigningIdx = 0
 
-	// Check that all invalid transitions are invalid
-	if err := callAllExcept([]Transition{goFundingToActing}, r, m); err != nil {
-		return false, errors.WithMessagef(err, "now in phase %v", m.Phase())
-	}
-	// Machine that will go to 'Acting' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goFundingToActing(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkActing(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-
-	return false, nil
+	return transitionTo(goFundingToActing, checkActing, r, m, depth)
 }
 
 func checkActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.Acting {
 		return false, errors.New("Started in wrong phase")
 	}
-	if depth == 0 {
-		return true, nil
-	}
+	r.SigningIdx = 0
 
-	// Check that all invalid transitions are invalid
-	if err := callAllExcept([]Transition{goActingToSigning}, r, m); err != nil {
-		return false, errors.WithMessagef(err, "now in phase %v", m.Phase())
-	}
-	// Machine that will go to 'Signing' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goActingToSigning(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkSigning(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-
-	return false, nil
+	return transitionTo(goActingToSigning, checkSigning, r, m, depth)
 }
 
 func checkSigning(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.Signing {
 		return false, errors.New("Started in wrong phase")
 	}
-	if depth == 0 {
-		return true, nil
-	}
 
-	// Check that all invalid transitions are invalid
-	if err := callAllExcept([]Transition{goSigningToActing, goSigningToFinal, goSigningToSigning}, r, m); err != nil {
-		return false, errors.WithMessagef(err, "now in phase %v", m.Phase())
+	if r.SigningIdx < len(r.Params.Parts) {
+		// Machine that will self transition only when signatures are missing
+		return transitionTo(goSigningToSigning, checkSigning, r, m, depth)
+	} else if r.State.IsFinal {
+		// Machine that will go to 'Final' phase only for Final states
+		return transitionTo(goSigningToFinal, checkFinal, r, m, depth)
+	} else {
+		// Machine that will go to 'Acting' phase with non-Final state
+		if d, err := transitionTo(goSigningToActing, checkActing, r, m, depth); err != nil {
+			return d, err
+		}
+		// Machine that will go to 'Acting' phase with Final state
+		r.State.IsFinal = true
+		return transitionTo(goSigningToActing, checkActing, r, m, depth)
 	}
-	// Machine that will go to 'Acting' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goSigningToActing(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkActing(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-	// Machine that will go to 'Final' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goSigningToFinal(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkFinal(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-	// Machine that will go to 'Signing' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goSigningToSigning(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkSigning(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-
-	return false, nil
 }
 
 func checkFinal(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.Final {
 		return false, errors.New("Started in wrong phase")
 	}
-	if depth == 0 {
-		return true, nil
-	}
 
-	// Check that all invalid transitions are invalid
-	if err := callAllExcept([]Transition{goFinalToSettled}, r, m); err != nil {
-		return false, errors.WithMessagef(err, "now in phase %v", m.Phase())
-	}
 	// Machine that will go to 'Settled' phase
-	{
-		cloned := m.Clone()
-		clonedR := r.Clone()
-		if err := goFinalToSettled(clonedR, cloned); err != nil {
-			return false, err
-		}
-		if _, err := checkSettled(clonedR, cloned, depth-1); err != nil {
-			return false, err
-		}
-	}
-
-	return false, nil
+	return transitionTo(goFinalToSettled, checkSettled, r, m, depth)
 }
 
 func checkSettled(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	if m.Phase() != channel.Settled {
-		return false, errors.New("Started in wrong phase")
-	}
-	if depth == 0 {
-		return true, nil
+		return true, errors.New("Started in wrong phase")
 	}
 
 	// Check that all invalid transitions are invalid
 	if err := callAllExcept([]Transition{}, r, m); err != nil {
-		return false, errors.WithMessagef(err, "now in phase %v", m.Phase())
+		return true, errors.WithMessagef(err, "now in phase %v", m.Phase())
 	}
 
 	// This is an accepting state
-	return false, nil
+	return true, nil
 }
 
 /*func checkRegistering(r *round, m *channel.StateMachine, depth uint) (bool, error) {
@@ -375,35 +278,11 @@ func goInitActToInitSig(r *round, m *channel.StateMachine) error {
 	if err := m.Init(*r.InitAlloc, r.InitData); err != nil {
 		return err
 	}
-	//require.True(r.t, reflect.DeepEqual(m.StagingState(), r.State))
-
-	return nil
-}
-
-// goInitSigToInitSig transition InitSigning->InitSigning
-func goInitSigToInitSigs(r *round, m *channel.StateMachine) error {
-	var sig wallet.Sig
-	var err error
-
-	if r.InitSigningIdx >= len(r.Params.Parts) {
-		return errors.New("Already all signatures added")
-	}
-
-	if r.InitSigningIdx == 0 {
-		sig, err = m.Sig()
-
-		if err != nil {
-			return errors.WithMessagef(err, "could create signature")
-		}
-	} else {
-		sig, err = channel.Sign(r.Accs[r.InitSigningIdx], r.Params, r.State)
-		require.NoError(r.t, err)
-
-		if err := m.AddSig(channel.Index(r.InitSigningIdx), sig); err != nil {
-			return errors.WithMessagef(err, "Could not add message for peer %d", r.InitSigningIdx)
-		}
-	}
-	r.InitSigningIdx++
+	// Create the new state and check that the statemachine staged it correctly
+	state, err := channel.NewState(r.Params, *r.InitAlloc, r.InitData)
+	require.NoError(r.t, err)
+	r.State = state
+	require.True(r.t, reflect.DeepEqual(m.StagingState(), r.State))
 
 	return nil
 }
@@ -428,7 +307,7 @@ func goFundingToActing(r *round, m *channel.StateMachine) error {
 
 // goActingToSigning transition Acting->Signing
 func goActingToSigning(r *round, m *channel.StateMachine) error {
-	r.State = test.NewRandomState(r.rng, r.Params)
+	r.State.Version++
 	return m.Update(r.State, m.Idx())
 }
 
