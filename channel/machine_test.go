@@ -22,6 +22,29 @@ import (
 	wtest "perun.network/go-perun/wallet/test"
 )
 
+func TestPhase(t *testing.T) {
+	ps := []channel.Phase{channel.InitActing, channel.InitSigning, channel.Funding, channel.Acting, channel.Signing, channel.Final, channel.Settled}
+
+	t.Run("String()", func(t *testing.T) {
+		concat := ""
+		for _, p := range ps {
+			concat = concat + p.String() + " "
+		}
+		assert.Equal(t, concat, "InitActing InitSigning Funding Acting Signing Final Settled ")
+	})
+
+	t.Run("PhaseTransition", func(t *testing.T) {
+		for _, i := range ps {
+			for _, j := range ps {
+				ts := channel.PhaseTransition{i, j}
+				str := i.String() + "->" + j.String()
+
+				assert.Equal(t, str, ts.String())
+			}
+		}
+	})
+}
+
 func TestMachineClone(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xDDDDD))
 
@@ -45,7 +68,7 @@ func TestMachineClone(t *testing.T) {
 	}
 }
 
-func TestStateMachine(t *testing.T) {
+func TestMachine(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xDDDDD))
 
 	app := test.NewRandomApp(rng)
@@ -58,6 +81,30 @@ func TestStateMachine(t *testing.T) {
 
 	m, err := channel.NewStateMachine(accs[0], *params)
 	require.NoError(t, err)
+
+	t.Run("get/set", func(t *testing.T) {
+		testStateMachineGetSet(t, params, accs, m.Clone())
+	})
+
+	t.Run("transitions", func(t *testing.T) {
+		testStateMachineTransitions(t, params, accs, m)
+	})
+}
+
+func testStateMachineGetSet(t *testing.T, params *channel.Params, accs []wallet.Account, m *channel.StateMachine) {
+	assert := assert.New(t)
+
+	assert.Equal(params.ID(), m.ID())
+	assert.Equal(accs[0].Address(), m.Account().Address())
+	assert.Equal(channel.Index(0), m.Idx())
+	assert.Equal(params, m.Params())
+	assert.Equal(len(params.Parts), int(m.N()))
+	assert.Equal(channel.InitActing, m.Phase())
+	assert.Equal((*channel.State)(nil), m.State())
+}
+
+func testStateMachineTransitions(t *testing.T, params *channel.Params, accs []wallet.Account, m *channel.StateMachine) {
+	rng := rand.New(rand.NewSource(0xDDDDD))
 
 	initAlloc := test.NewRandomAllocation(rng, len(params.Parts))
 	initData := channel.NewMockOp(channel.OpValid)
