@@ -109,7 +109,7 @@ func verifyStep(t *testing.T, r *round, m *channel.StateMachine, phase channel.P
 	// Check that we get a full signed state in phases where it is important.
 	if phase == channel.Funding || phase == channel.Acting || phase == channel.Final || phase == channel.Settled {
 		require.Equal(len(r.Params.Parts), len(req.Tx.Sigs))
-		for i, _ := range req.Tx.Sigs {
+		for i := range req.Tx.Sigs {
 			require.True(channel.Verify(r.Accs[i].Address(), r.Params, req.Tx.State, req.Tx.Sigs[i]))
 		}
 	}
