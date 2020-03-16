@@ -99,7 +99,20 @@ func verifyStep(t *testing.T, r *round, m *channel.StateMachine, phase channel.P
 	} else {
 		require.Equal(r.State, m.State(), "Wrong current state")
 	}
-	// TODO Check AdjudicatorReq, the call does not always make sense
+
+	// Test the generated AdjudicatorReq
+	req := m.AdjudicatorReq()
+	require.Equal(r.Params, req.Params)
+	require.Equal(req.Acc.Address(), r.Accs[0].Address())
+	require.Equal(channel.Index(0), req.Idx)
+	require.Equal(req.Tx.State, m.State())
+	// Check that we get a full signed state in phases where it is important.
+	if phase == channel.Funding || phase == channel.Acting || phase == channel.Final || phase == channel.Settled {
+		require.Equal(len(r.Params.Parts), len(req.Tx.Sigs))
+		for i, _ := range req.Tx.Sigs {
+			require.True(channel.Verify(r.Accs[i].Address(), r.Params, req.Tx.State, req.Tx.Sigs[i]))
+		}
+	}
 }
 
 func checkInitActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
