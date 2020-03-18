@@ -19,14 +19,14 @@ import (
 )
 
 func TestPhase(t *testing.T) {
-	ps := []channel.Phase{channel.InitActing, channel.InitSigning, channel.Funding, channel.Acting, channel.Signing, channel.Final, channel.Settled}
+	ps := []channel.Phase{channel.InitActing, channel.InitSigning, channel.Funding, channel.Acting, channel.Signing, channel.Final, channel.Registering, channel.Registered, channel.Withdrawing, channel.Withdrawn}
 
 	t.Run("Phase.String()", func(t *testing.T) {
 		concat := ""
 		for _, p := range ps {
 			concat = concat + p.String() + " "
 		}
-		assert.Equal(t, concat, "InitActing InitSigning Funding Acting Signing Final Settled ")
+		assert.Equal(t, concat, "InitActing InitSigning Funding Acting Signing Final Registering Registered Withdrawing Withdrawn ")
 	})
 	t.Run("PhaseTransition.String()", func(t *testing.T) {
 		for _, i := range ps {
@@ -83,13 +83,17 @@ var transitions []Transition
 func init() {
 	transitions = []Transition{
 		goActingToSigning,
-		goFinalToSettled,
+		//goFinalToSettled,
 		goFundingToActing,
 		goInitActToInitSig,
 		goInitSigToFunding,
 		goSigningToActing,
-		goSigningToFinal,
+		goToFinal,
 		goSigningToSigning,
+		goToRegistering,
+		goToRegistered,
+		goToWithdrawing,
+		goToWithdrawn,
 	}
 }
 
@@ -129,6 +133,27 @@ func transitionTo(arrow Transition, state State, r *setup, m *channel.StateMachi
 	r = r.Clone()
 	m = m.Clone()
 	if err := arrow(r, m); err != nil {
+		return false, err
+	}
+	if _, err := state(r, m, depth-1); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func transitionTos(arrows []Transition, state State, r *setup, m *channel.StateMachine, depth uint) (bool, error) {
+	if depth == 0 {
+		return true, nil
+	}
+	if err := callAllExcept(arrows, r, m); err != nil {
+		return false, err
+	}
+	r.t.Logf("take (%d) %s -> %s\n\n", depth, functionName(arrows[0]), functionName(state))
+
+	r = r.Clone()
+	m = m.Clone()
+	if err := arrows[0](r, m); err != nil {
 		return false, err
 	}
 	if _, err := state(r, m, depth-1); err != nil {

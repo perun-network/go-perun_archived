@@ -186,7 +186,7 @@ func verifyStep(t *testing.T, r *setup, m *channel.StateMachine, phase channel.P
 	require.Equal(channel.Index(0), req.Idx)
 	require.Equal(req.Tx.State, m.State())
 	// Check that we get a full signed state in phases where it is important.
-	if phase == channel.Funding || phase == channel.Acting || phase == channel.Final || phase == channel.Settled {
+	if phase == channel.Funding || phase == channel.Acting || phase >= channel.Final {
 		require.Equal(len(r.Params.Parts), len(req.Tx.Sigs))
 		for i := range req.Tx.Sigs {
 			require.True(channel.Verify(r.Accs[i].Address(), r.Params, req.Tx.State, req.Tx.Sigs[i]))
@@ -220,7 +220,7 @@ func checkFunding(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Funding)
 	r.SigningIdx = 0
 
-	return transitionTo(goFundingToActing, checkActing, r, m, depth)
+	return transitionTos([]Transition{goFundingToActing, goToRegistering, goToRegistered}, checkActing, r, m, depth)
 }
 
 func checkActing(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
@@ -248,7 +248,7 @@ func checkSigning(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 		return transitionTo(goSigningToSigning, checkSigning, r, m, depth)
 	} else if r.State.IsFinal {
 		// Machine that will go to 'Final' phase only for Final states
-		return transitionTo(goSigningToFinal, checkFinal, r, m, depth)
+		return transitionTo(goToFinal, checkFinal, r, m, depth)
 	} else {
 		// Machine that will go to 'Acting' phase with non-Final state
 		return transitionTo(goSigningToActing, checkActing, r, m, depth)
@@ -258,14 +258,31 @@ func checkSigning(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 func checkFinal(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Final)
 
-	// Machine that will go to 'Settled' phase
-	return transitionTo(goFinalToSettled, checkSettled, r, m, depth)
+	// Machine that will go to 'Registering' phase
+	return transitionTo(goToRegistering, checkRegistering, r, m, depth)
 }
 
-func checkSettled(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
-	verifyStep(r.t, r, m, channel.Settled)
+func checkRegistering(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
+	verifyStep(r.t, r, m, channel.Registering)
 
-	// Check that all invalid transitions are invalid
+	return transitionTo(goToRegistered, checkRegistering, r, m, depth)
+}
+
+func checkRegistered(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
+	verifyStep(r.t, r, m, channel.Registered)
+
+	return transitionTo(goToWithdrawing, checkRegistering, r, m, depth)
+}
+
+func checkWithdrawing(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
+	verifyStep(r.t, r, m, channel.Withdrawing)
+
+	return transitionTo(goToWithdrawn, checkRegistering, r, m, depth)
+}
+
+func checkWithdrawn(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
+	verifyStep(r.t, r, m, channel.Withdrawn)
+
 	if err := callAllExcept([]Transition{}, r, m); err != nil {
 		return true, errors.WithMessagef(err, "now in phase %v", m.Phase())
 	}
@@ -273,11 +290,6 @@ func checkSettled(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	// This is an accepting state
 	return true, nil
 }
-
-/*func checkRegistering(r *round, m *channel.StateMachine, depth uint) (bool, error) {
-	// Phase not yet implemented
-	return true, nil
-}*/
 
 // goInitActToInitSig transition InitActing->InitSigning
 func goInitActToInitSig(r *setup, m *channel.StateMachine) error {
@@ -306,14 +318,6 @@ func goInitSigToFunding(r *setup, m *channel.StateMachine) error {
 func goFundingToActing(r *setup, m *channel.StateMachine) error {
 	return m.SetFunded()
 }
-
-// goFundingToRegistering transition Funding->Registering
-//func goFundingToRegistering(r *round, m *channel.StateMachine) error {
-//	return nil
-//}
-
-// goActingToRegistering transition Acting->Registering
-//var goActingToRegistering = goFundingToRegistering
 
 // goActingToSigning transition Acting->Signing
 func goActingToSigning(r *setup, m *channel.StateMachine) error {
@@ -361,6 +365,30 @@ func goSigningToSigning(r *setup, m *channel.StateMachine) error {
 	return nil
 }
 
+// goFinalToRegistering transition Final->Registering
+//var goFinalToRegistering = goFundingToRegistering
+
+// goSigningToFinal transition Signing->Final
+func goToFinal(r *setup, m *channel.StateMachine) error {
+	return m.EnableFinal()
+}
+
+func goToRegistering(r *setup, m *channel.StateMachine) error {
+	return m.SetRegistering()
+}
+
+func goToRegistered(r *setup, m *channel.StateMachine) error {
+	return m.SetRegistered()
+}
+
+func goToWithdrawing(r *setup, m *channel.StateMachine) error {
+	return m.SetWithdrawing()
+}
+
+func goToWithdrawn(r *setup, m *channel.StateMachine) error {
+	return m.SetWithdrawn()
+}
+
 func verifyAddSig(m *channel.StateMachine, i channel.Index, sig wallet.Sig) error {
 	orig := m.Clone()
 	wrongIdx := (i + 1) % uint16(len(m.Params().Parts))
@@ -379,17 +407,4 @@ func verifyAddSig(m *channel.StateMachine, i channel.Index, sig wallet.Sig) erro
 		return errors.New("Machine should stay the same")
 	}
 	return m.AddSig(i, sig)
-}
-
-// goFinalToRegistering transition Final->Registering
-//var goFinalToRegistering = goFundingToRegistering
-
-// goSigningToFinal transition Signing->Final
-func goSigningToFinal(r *setup, m *channel.StateMachine) error {
-	return m.EnableFinal()
-}
-
-// goFinalToSettled transition Final->Settled
-func goFinalToSettled(r *setup, m *channel.StateMachine) error {
-	return m.SetSettled()
 }
