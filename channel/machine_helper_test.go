@@ -39,7 +39,7 @@ func TestPhase(t *testing.T) {
 	})
 }
 
-type round struct {
+type setup struct {
 	Params    *channel.Params
 	Accs      []wallet.Account `cloneable:"shallow"`
 	InitAlloc *channel.Allocation
@@ -53,14 +53,14 @@ type round struct {
 	t   *testing.T `cloneable:"shallow"`
 }
 
-func (r *round) Clone() *round {
+func (r *setup) Clone() *setup {
 	a := r.InitAlloc.Clone()
 	var state *channel.State
 	if r.State != nil {
 		state = r.State.Clone()
 	}
 
-	return &round{
+	return &setup{
 		Params:         r.Params.Clone(),
 		Accs:           r.Accs,
 		InitAlloc:      &a,
@@ -74,9 +74,9 @@ func (r *round) Clone() *round {
 }
 
 // Return value: (depth_reached bool, err error)
-type Transition func(*round, *channel.StateMachine) error
+type Transition func(*setup, *channel.StateMachine) error
 
-type State func(*round, *channel.StateMachine, uint) (bool, error)
+type State func(*setup, *channel.StateMachine, uint) (bool, error)
 
 var transitions []Transition
 
@@ -93,7 +93,7 @@ func init() {
 	}
 }
 
-func callAllExcept(expect []Transition, r *round, m *channel.StateMachine) error {
+func callAllExcept(expect []Transition, r *setup, m *channel.StateMachine) error {
 outer:
 	for _, ts := range transitions {
 		t := functionName(ts)
@@ -117,7 +117,7 @@ outer:
 	return nil
 }
 
-func transitionTo(arrow Transition, state State, r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func transitionTo(arrow Transition, state State, r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	if depth == 0 {
 		return true, nil
 	}

@@ -26,7 +26,7 @@ func NewStateMachine(acc wallet.Account, params Params) (*StateMachine, error) {
 		return nil, errors.New("app must be StateApp")
 	}
 
-	m, err := NewMachine(acc, params)
+	m, err := newMachine(acc, params)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +79,9 @@ func (m *StateMachine) CheckUpdate(
 	state *State, actor Index,
 	sig wallet.Sig, sigIdx Index,
 ) error {
+	if m.Phase() < Funding {
+		return errors.New("can not check updates before funding")
+	}
 	if err := m.validTransition(state, actor); err != nil {
 		return err
 	}

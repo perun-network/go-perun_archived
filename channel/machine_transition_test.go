@@ -6,8 +6,10 @@
 package channel_test
 
 import (
+	"math/big"
 	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -40,31 +42,108 @@ func TestMachine(t *testing.T) {
 	})
 }
 
-func testMachineClone(params channel.Params, acc wallet.Account, t *testing.T) {
-	for i := 0; i < 100; i++ {
-		m, err := channel.NewMachine(acc, params)
-		require.NoError(t, err)
-		pkgtest.VerifyClone(t, m)
-
-		sm, err := channel.NewStateMachine(acc, params)
-		require.NoError(t, err)
-		pkgtest.VerifyClone(t, sm)
-
-		am, err := channel.NewActionMachine(acc, params)
-		require.NoError(t, err)
-		pkgtest.VerifyClone(t, am)
+func TestValidTransition(t *testing.T) {
+	rng := rand.New(rand.NewSource(0xDDDDD))
+	app := test.NewRandomApp(rng)
+	params := test.NewRandomParams(rng, app.Def())
+	accs := make([]wallet.Account, len(params.Parts))
+	for i := range accs {
+		accs[i] = wtest.NewRandomAccount(rng)
+		params.Parts[i] = accs[i].Address()
 	}
+	m, err := channel.NewStateMachine(accs[0], *params)
+	require.NoError(t, err)
+	initAlloc := test.NewRandomAllocation(rng, len(params.Parts))
+	initData := channel.NewMockOp(channel.OpValid)
+
+	require.NoError(t, m.Init(*initAlloc, initData))
+	state := &channel.State{
+		ID:         params.ID(),
+		Version:    0,
+		App:        params.App,
+		Allocation: *initAlloc,
+		Data:       initData,
+	}
+	newState := state.Clone()
+	newState.Version++
+
+	for i := range params.Parts {
+		sig, err := channel.Sign(accs[i], params, state)
+		require.NoError(t, err)
+		require.NoError(t, m.AddSig(channel.Index(i), sig))
+	}
+	require.NoError(t, m.EnableInit())
+
+	// Invalid IDx
+	{
+		err := m.CheckUpdate(state, channel.Index(len(params.Parts)+1), nil, 0)
+		require.Error(t, err)
+		assert.Equal(t, "actor index is out of range", err.Error())
+	}
+	// Invalid channel ID
+	{
+		newState := newState.Clone()
+		newState.ID[0] ^= 1
+		err := m.CheckUpdate(newState, 0, nil, 0)
+		require.Error(t, err)
+		assert.Equal(t, "new state's ID doesn't match", err.Error())
+	}
+	// Invalid AppDef
+	{
+		newState := newState.Clone()
+		newState.App = test.NewRandomApp(rng)
+		err := m.CheckUpdate(newState, 0, nil, 0)
+		require.Error(t, err)
+		assert.Equal(t, "new state's App dosen't match", err.Error())
+	}
+	// Transition from final
+	/*{
+		newState := state.Clone()
+		newState.IsFinal = true
+		err := m.CheckUpdate(newState, 0, nil, 0)
+		require.True(t, channel.IsStateTransitionError(err))
+		assert.Equal(t, "cannot advance final state", err.Error())
+	}*/
+	// Version not incremented by one
+	{
+		err := m.CheckUpdate(state, 0, nil, 0)
+		require.True(t, channel.IsStateTransitionError(err))
+		assert.True(t, strings.Contains(err.Error(), "version must increase by one"))
+	}
+	// Invalid Allocation
+	{
+		newState := newState.Clone()
+		newState.Allocation.Assets = nil
+		err := m.CheckUpdate(newState, 0, nil, 0)
+		require.True(t, channel.IsStateTransitionError(err))
+		assert.True(t, strings.Contains(err.Error(), "invalid allocation"))
+	}
+	// Inequal Allocation Sum
+	{
+		newState := newState.Clone()
+		newState.Allocation.OfParts[0][0].Add(big.NewInt(1), newState.Allocation.OfParts[0][0])
+		err := m.CheckUpdate(newState, 0, nil, 0)
+		require.True(t, channel.IsStateTransitionError(err))
+		assert.True(t, strings.Contains(err.Error(), "allocations must be preserved"))
+	}
+}
+
+func testMachineClone(params channel.Params, acc wallet.Account, t *testing.T) {
+	sm, err := channel.NewStateMachine(acc, params)
+	require.NoError(t, err)
+	pkgtest.VerifyClone(t, sm)
+
+	am, err := channel.NewActionMachine(acc, params)
+	require.NoError(t, err)
+	pkgtest.VerifyClone(t, am)
 }
 
 func testStateMachineTransitions(t *testing.T, params *channel.Params, accs []wallet.Account, m *channel.StateMachine) {
 	rng := rand.New(rand.NewSource(0xDDDDD))
 	initAlloc := test.NewRandomAllocation(rng, len(params.Parts))
 	initData := channel.NewMockOp(channel.OpValid)
-	/*state, err := channel.NewState(params, *initAlloc, initData)
-	require.NoError(t, err)
-	state.Version = 0*/
 
-	r := &round{
+	r := &setup{
 		Params:    params,
 		Accs:      accs,
 		InitAlloc: initAlloc,
@@ -83,7 +162,7 @@ func testStateMachineTransitions(t *testing.T, params *channel.Params, accs []wa
 }
 
 // verifyStep checks that the induction step holds.
-func verifyStep(t *testing.T, r *round, m *channel.StateMachine, phase channel.Phase) {
+func verifyStep(t *testing.T, r *setup, m *channel.StateMachine, phase channel.Phase) {
 	require := assert.New(t)
 
 	require.Equal(r.Params.ID(), m.ID())
@@ -95,7 +174,7 @@ func verifyStep(t *testing.T, r *round, m *channel.StateMachine, phase channel.P
 
 	// Check correct state
 	if phase == channel.InitSigning || phase == channel.Signing {
-		require.Equal(r.State, m.StagingState(), "Wrong stating state")
+		require.Equal(r.State, m.StagingState(), "Wrong staging state")
 	} else {
 		require.Equal(r.State, m.State(), "Wrong current state")
 	}
@@ -113,9 +192,11 @@ func verifyStep(t *testing.T, r *round, m *channel.StateMachine, phase channel.P
 			require.True(channel.Verify(r.Accs[i].Address(), r.Params, req.Tx.State, req.Tx.Sigs[i]))
 		}
 	}
+	// Check that the machine is cloneable in every phases
+	pkgtest.VerifyClone(t, m)
 }
 
-func checkInitActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkInitActing(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.InitActing)
 
 	// Machine that will go to 'InitSigning' phase
@@ -123,7 +204,7 @@ func checkInitActing(r *round, m *channel.StateMachine, depth uint) (bool, error
 	return transitionTo(goInitActToInitSig, checkInitSigning, r, m, depth)
 }
 
-func checkInitSigning(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkInitSigning(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.InitSigning)
 
 	if r.SigningIdx < len(r.Params.Parts) {
@@ -135,14 +216,14 @@ func checkInitSigning(r *round, m *channel.StateMachine, depth uint) (bool, erro
 	}
 }
 
-func checkFunding(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkFunding(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Funding)
 	r.SigningIdx = 0
 
 	return transitionTo(goFundingToActing, checkActing, r, m, depth)
 }
 
-func checkActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkActing(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Acting)
 	r.SigningIdx = 0
 
@@ -159,7 +240,7 @@ func checkActing(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	return transitionTo(goActingToSigning, checkSigning, r, m, depth)
 }
 
-func checkSigning(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkSigning(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Signing)
 
 	if r.SigningIdx < len(r.Params.Parts) {
@@ -174,14 +255,14 @@ func checkSigning(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 	}
 }
 
-func checkFinal(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkFinal(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Final)
 
 	// Machine that will go to 'Settled' phase
 	return transitionTo(goFinalToSettled, checkSettled, r, m, depth)
 }
 
-func checkSettled(r *round, m *channel.StateMachine, depth uint) (bool, error) {
+func checkSettled(r *setup, m *channel.StateMachine, depth uint) (bool, error) {
 	verifyStep(r.t, r, m, channel.Settled)
 
 	// Check that all invalid transitions are invalid
@@ -199,26 +280,30 @@ func checkSettled(r *round, m *channel.StateMachine, depth uint) (bool, error) {
 }*/
 
 // goInitActToInitSig transition InitActing->InitSigning
-func goInitActToInitSig(r *round, m *channel.StateMachine) error {
+func goInitActToInitSig(r *setup, m *channel.StateMachine) error {
 	if err := m.Init(*r.InitAlloc, r.InitData); err != nil {
 		return err
 	}
-	// Create the new state and check that the statemachine staged it correctly
-	state, err := channel.NewState(r.Params, *r.InitAlloc, r.InitData)
-	require.NoError(r.t, err)
-	r.State = state
-	require.True(r.t, reflect.DeepEqual(m.StagingState(), r.State))
 
+	// Create the new state and check that the statemachine staged it correctly
+	r.State = &channel.State{
+		ID:         r.Params.ID(),
+		Version:    0,
+		App:        r.Params.App,
+		Allocation: *r.InitAlloc,
+		Data:       r.InitData,
+	}
+	require.True(r.t, reflect.DeepEqual(m.StagingState(), r.State))
 	return nil
 }
 
 // goInitSigToFunding transition InitSigning->Funding
-func goInitSigToFunding(r *round, m *channel.StateMachine) error {
+func goInitSigToFunding(r *setup, m *channel.StateMachine) error {
 	return m.EnableInit()
 }
 
 // goFundingToActing transition InitSigning->Acting
-func goFundingToActing(r *round, m *channel.StateMachine) error {
+func goFundingToActing(r *setup, m *channel.StateMachine) error {
 	return m.SetFunded()
 }
 
@@ -231,7 +316,7 @@ func goFundingToActing(r *round, m *channel.StateMachine) error {
 //var goActingToRegistering = goFundingToRegistering
 
 // goActingToSigning transition Acting->Signing
-func goActingToSigning(r *round, m *channel.StateMachine) error {
+func goActingToSigning(r *setup, m *channel.StateMachine) error {
 	if r.State == nil {
 		return errors.New("Needs state")
 	}
@@ -243,13 +328,13 @@ func goActingToSigning(r *round, m *channel.StateMachine) error {
 //var goSigningToRegistering = goFundingToRegistering
 
 // goSigningToActing transition Signing->Acting
-func goSigningToActing(r *round, m *channel.StateMachine) error {
+func goSigningToActing(r *setup, m *channel.StateMachine) error {
 	return m.EnableUpdate()
 }
 
 // goSigningToSigning modells the transitions Signing->Signing
 // AND InitSigning->InitSigning
-func goSigningToSigning(r *round, m *channel.StateMachine) error {
+func goSigningToSigning(r *setup, m *channel.StateMachine) error {
 	var sig wallet.Sig
 	var err error
 
@@ -300,11 +385,11 @@ func verifyAddSig(m *channel.StateMachine, i channel.Index, sig wallet.Sig) erro
 //var goFinalToRegistering = goFundingToRegistering
 
 // goSigningToFinal transition Signing->Final
-func goSigningToFinal(r *round, m *channel.StateMachine) error {
+func goSigningToFinal(r *setup, m *channel.StateMachine) error {
 	return m.EnableFinal()
 }
 
 // goFinalToSettled transition Final->Settled
-func goFinalToSettled(r *round, m *channel.StateMachine) error {
+func goFinalToSettled(r *setup, m *channel.StateMachine) error {
 	return m.SetSettled()
 }
