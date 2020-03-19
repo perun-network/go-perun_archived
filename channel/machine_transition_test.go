@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -378,7 +379,17 @@ func goToRegistering(r *setup, m *channel.StateMachine) error {
 }
 
 func goToRegistered(r *setup, m *channel.StateMachine) error {
-	return m.SetRegistered()
+	var v uint64 = 0
+	if r.State != nil {
+		v = r.State.Version
+	}
+
+	e := &channel.RegisteredEvent{
+		ID:      r.Params.ID(),
+		Version: v,
+		Timeout: time.Now().Add(time.Hour),
+	}
+	return m.SetRegistered(e)
 }
 
 func goToWithdrawing(r *setup, m *channel.StateMachine) error {
