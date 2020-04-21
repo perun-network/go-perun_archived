@@ -57,6 +57,7 @@ type (
 		Balances [][]Bal
 		// Locked is the locked allocation to sub-app-channels. It is allowed to be
 		// nil, in which case there's nothing locked.
+		// Its dimension matches the number of sub-app-channels.
 		Locked []SubAlloc
 	}
 
