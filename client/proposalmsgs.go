@@ -48,13 +48,21 @@ type SessionID = [32]byte
 // ChannelProposal implements the channel proposal messages from the
 // Multi-Party Channel Proposal Protocol (MPCPP).
 type ChannelProposal struct {
+	// Duration in seconds how long the Adjudicator waits before it assumes a timeout.
 	ChallengeDuration uint64
-	Nonce             *big.Int
-	ParticipantAddr   wallet.Address
-	AppDef            wallet.Address
-	InitData          channel.Data
-	InitBals          *channel.Allocation
-	PeerAddrs         []wallet.Address
+	// Random value to make every channel unique. Should be generated cryptographically secure.
+	Nonce *big.Int
+	// Off-chain Address that is used for the channel.
+	ParticipantAddr wallet.Address
+	// Address of the app that will be executed in the channel.
+	AppDef wallet.Address
+	// Initial data of the App.
+	InitData channel.Data
+	// Initial balances of the channel.
+	InitBals *channel.Allocation
+	// PerunIDs (currently onchain Addresses) of all peers participating in the channel.
+	// The first entry is the proposer.
+	PeerAddrs []wallet.Address
 }
 
 // Type returns msg.ChannelProposal.
@@ -209,8 +217,8 @@ func (c ChannelProposal) Valid() error {
 // The type implements the channel proposal response messages from the
 // Multi-Party Channel Proposal Protocol (MPCPP).
 type ChannelProposalAcc struct {
-	SessID          SessionID
-	ParticipantAddr wallet.Address
+	SessID          SessionID      // Temporary ID used for channel messages
+	ParticipantAddr wallet.Address // Off-chain Address
 }
 
 // Type returns msg.ChannelProposalAcc.
@@ -247,8 +255,8 @@ func (acc *ChannelProposalAcc) Decode(r io.Reader) (err error) {
 // The message is one of two possible responses in the
 // Multi-Party Channel Proposal Protocol (MPCPP).
 type ChannelProposalRej struct {
-	SessID SessionID
-	Reason string
+	SessID SessionID // Temporary ID used for channel messages
+	Reason string    // Reason for the rejection
 }
 
 // Type returns msg.ChannelProposalRej.

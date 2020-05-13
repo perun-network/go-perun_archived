@@ -42,6 +42,7 @@ type (
 	// ProposalResponder.Accept() when they want to accept an incoming channel
 	// proposal.
 	ProposalAcc struct {
+		// Off-chain Address which you want use for the channel.
 		Participant wallet.Address
 	}
 )
