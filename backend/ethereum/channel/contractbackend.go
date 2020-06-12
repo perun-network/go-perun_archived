@@ -135,17 +135,28 @@ func (c *ContractBackend) confirmTransaction(ctx context.Context, tx *types.Tran
 		} else {
 			log.Warn("TX failed with reason: ", reason)
 		}
-		return errors.WithStack(ErrorTxFailed)
+		return errors.WithStack(TxFailedError{})
 	}
 	return nil
 }
 
-// ErrorTxFailed signals a failed, i.e., reverted, transaction.
-var ErrorTxFailed = stderrors.New("transaction failed")
+// TxFailedError is used to signal failed tranasaction.
+type TxFailedError struct {
+	Reason string
+}
+
+func (e TxFailedError) Error() string {
+	return e.Reason
+}
 
 // IsTxFailedError returns whether the cause of the error was a failed transaction.
 func IsTxFailedError(err error) bool {
-	return errors.Cause(err) == ErrorTxFailed
+	_, ok := errors.Cause(err).(TxFailedError)
+	return ok
+}
+
+func (e *TxFailedError) String() string {
+	return "Transaction failed: " + e.Reason
 }
 
 func errorReason(ctx context.Context, b *ContractBackend, tx *types.Transaction, blockNum *big.Int) (string, error) {
