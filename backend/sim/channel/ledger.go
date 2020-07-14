@@ -38,6 +38,8 @@ type (
 
 		// deposits register how much, in a channel, each participant holds for each asset.
 		deposits *channel.Allocation
+
+		funded chan struct{}
 	}
 )
 
@@ -160,6 +162,21 @@ func (l *Ledger) Deposit(request channel.FundingReq, funder wallet.Address) {
 		chanRec.deposits.Balances[assetIdx][request.Idx] = new(big.Int).Set(bal)
 		bal.Set(big.NewInt(0))
 	}
+
+	// Check for each asseet that the sum of deposits is greater or equal the
+	// required amount.
+	// Hint: use Allocation.Sum()
+	if chanRec.deposits.Sum >= chanRec.state.Allocation.Sum() {
+		close(chanRec.funded)
+	}
+
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "context timeout")
+	case <-chanRec.funded:
+		return
+	}
+
 	return
 }
 
@@ -171,7 +188,12 @@ func newChanRecord(state *channel.State, params *channel.Params) chanRecord {
 			depots.Balances[i][j] = big.NewInt(0)
 		}
 	}
-	return chanRecord{params: params.Clone(), state: state.Clone(), deposits: &depots}
+	return chanRecord{
+		params:   params.Clone(),
+		state:    state.Clone(),
+		deposits: &depots,
+		funded:   make(chan struct{}),
+	}
 }
 
 // getAssetIdxs returns a map containing, for each asset, its index in the input slice.
