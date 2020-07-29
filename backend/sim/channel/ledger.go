@@ -15,6 +15,7 @@
 package channel
 
 import (
+	"context"
 	"math/big"
 	"sync"
 
@@ -39,8 +40,6 @@ type (
 
 	// chanRecord holds on-chain channel information.
 	chanRecord struct {
-
-		//nolint:structcheck,unused
 		// params holds the Params of a channel.
 		params *channel.Params
 
@@ -49,6 +48,9 @@ type (
 
 		// deposits register how much, in a channel, each participant holds for each asset.
 		deposits *channel.Allocation
+
+		// funded acts as an event for when a channel is successfully funded
+		funded chan struct{}
 	}
 )
 
@@ -195,6 +197,93 @@ func (l *Ledger) Transfer(asset *Asset, from, to wallet.Address, amount channel.
 		return errors.WithMessage(err, "increasing receiver's balance")
 	}
 	return nil
+}
+
+// Deposit moves all on-chain balances of the funder into the channel balance of
+// `request.Idx`, for each asset. The given `channel.FundingReq` is assumed not
+// to be malformed.
+func (l *Ledger) Deposit(ctx context.Context, request channel.FundingReq, funder wallet.Address) error {
+	l.mu.Lock()
+
+	alloc := request.State.Allocation
+	if err := l.verifyChannelDeposit(wallet.Key(funder), request.Idx, alloc); err != nil {
+		l.mu.Unlock()
+		return errors.WithMessage(err, "depositing funds for channel from ledger")
+	}
+
+	chanRec, ok := l.channels[request.Params.ID()]
+	if !ok {
+		l.channels[request.Params.ID()] = newChanRecord(request.State, request.Params)
+		chanRec = l.channels[request.Params.ID()]
+	}
+
+	for assetIdx, asset := range alloc.Assets {
+		reqBal := alloc.Balances[assetIdx][request.Idx]
+		chanRec.deposits.Balances[assetIdx][request.Idx].Set(reqBal)
+		if err := l.sub(asset.(*Asset), funder, reqBal); err != nil {
+			l.mu.Unlock()
+			return errors.WithMessage(err, "subtracting funds for account from ledger")
+		}
+	}
+
+	chanRec.emitEventIfFunded()
+	l.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "context timeout")
+	case <-chanRec.funded:
+		return nil
+	}
+}
+
+// verifyChannelDeposit verifies if a deposit of all assets within `alloc.Assets`
+// for a channel is possible. This method is not threadsafe and requires the
+// caller to have acquired a lock beforehand.
+func (l *Ledger) verifyChannelDeposit(funder wallet.AddrKey, funderIdx channel.Index, alloc channel.Allocation) error {
+	for assetIdx, asset := range alloc.Assets {
+		reqBal := alloc.Balances[assetIdx][funderIdx]
+		curBal := l.bals[*asset.(*Asset)][funder]
+		if err := l.verifyTransfer(curBal, new(big.Int).Neg(reqBal)); err != nil {
+			return errors.WithMessage(err, "depositing funds for channel from ledger")
+		}
+	}
+	return nil
+}
+
+// emitEventIfFunded closes the `cr.funded` channel iff all assets have been
+// successfully funded, thus emitting a successful `funded` event.
+func (cr *chanRecord) emitEventIfFunded() {
+	depositedSum := cr.deposits.Sum()
+	requestedSum := cr.state.Allocation.Sum()
+	select {
+	case <-cr.funded:
+		return
+	default:
+	}
+
+	for i, depSum := range depositedSum {
+		if depSum.Cmp(requestedSum[i]) < 0 {
+			return
+		}
+	}
+	close(cr.funded)
+}
+
+// newChanRecord returns a new empty channel record.
+func newChanRecord(state *channel.State, params *channel.Params) chanRecord {
+	depots := state.Allocation.Clone()
+	for i := range depots.Balances {
+		for j := range depots.Balances[i] {
+			depots.Balances[i][j] = big.NewInt(0)
+		}
+	}
+	return chanRecord{
+		params:   params.Clone(),
+		state:    state.Clone(),
+		deposits: &depots,
+		funded:   make(chan struct{}),
+	}
 }
 
 // getAssetIdxs returns a map containing, for each asset, its index in the input slice.
