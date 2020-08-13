@@ -78,9 +78,9 @@ func (f ProposalHandlerFunc) HandleProposal(p *ChannelProposal, r *ProposalRespo
 //
 // After the channel got successfully created, the user is required to start the
 // channel watcher with Channel.Watch() on the returned channel controller.
-func (r *ProposalResponder) Accept(ctx context.Context, acc ProposalAcc) (*Channel, error) {
+func (r *ProposalResponder) Accept(ctx context.Context, acc ProposalAcc) (channel.ID, error) {
 	if ctx == nil {
-		return nil, errors.New("context must not be nil")
+		return channel.ID{}, errors.New("context must not be nil")
 	}
 
 	if !r.called.TrySet() {
@@ -90,7 +90,11 @@ func (r *ProposalResponder) Accept(ctx context.Context, acc ProposalAcc) (*Chann
 		log.Panic("nil context")
 	}
 
-	return r.client.handleChannelProposalAcc(ctx, r.peer, r.req, acc)
+	ch, err := r.client.handleChannelProposalAcc(ctx, r.peer, r.req, acc)
+	if err != nil {
+		return channel.ID{}, err
+	}
+	return ch.ID(), nil
 }
 
 // Reject lets the user signal that they reject the channel proposal.
@@ -124,26 +128,30 @@ func (r *ProposalResponder) Reject(ctx context.Context, reason string) error {
 // After the channel got successfully created, the user is required to start the
 // channel watcher with Channel.Watch() on the returned channel
 // controller.
-func (c *Client) ProposeChannel(ctx context.Context, req *ChannelProposal) (*Channel, error) {
+func (c *Client) ProposeChannel(ctx context.Context, req *ChannelProposal) (channel.ID, error) {
 	if ctx == nil || req == nil {
 		c.log.Panic("invalid nil argument")
 	}
 
 	// 1. check valid proposal
 	if err := c.validTwoPartyProposal(req, proposerIdx, req.PeerAddrs[proposeeIdx]); err != nil {
-		return nil, errors.WithMessage(err, "invalid channel proposal")
+		return channel.ID{}, errors.WithMessage(err, "invalid channel proposal")
 	}
 
 	// 2. send proposal and wait for response
 	parts, err := c.exchangeTwoPartyProposal(ctx, req)
 	if err != nil {
-		return nil, errors.WithMessage(err, "sending proposal")
+		return channel.ID{}, errors.WithMessage(err, "sending proposal")
 	}
 
 	// 3. create params, channel machine from gathered participant addresses
 	// 4. fund channel
 	// 5. return controller on successful funding
-	return c.setupChannel(ctx, req, parts, proposerIdx)
+	ch, err := c.setupChannel(ctx, req, parts, proposerIdx)
+	if err != nil {
+		return channel.ID{}, err
+	}
+	return ch.ID(), nil
 }
 
 // handleChannelProposal implements the receiving side of the (currently)

@@ -171,12 +171,12 @@ func (r *role) Idxs(peers [2]wire.Address) (our, their int) {
 func (r *role) ProposeChannel(req *client.ChannelProposal) (*paymentChannel, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
-	_ch, err := r.Client.ProposeChannel(ctx, req)
+	id, err := r.Client.ProposeChannel(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	// Client.OnNewChannel callback adds paymentChannel wrapper to the chans map
-	return r.chans[_ch.ID()], nil
+	return r.chans[id], nil
 }
 
 type (
@@ -185,15 +185,15 @@ type (
 	// Each accepted channel is put on the chans go channel.
 	acceptAllPropHandler struct {
 		r     *role
-		chans chan channelAndError
+		chans chan channelIDAndError
 		rng   *rand.Rand
 	}
 
-	// channelAndError bundles the return parameters of ProposalResponder.Accept
+	// channelIDAndError bundles the return parameters of ProposalResponder.Accept
 	// to be able to send them over a channel.
-	channelAndError struct {
-		channel *client.Channel
-		err     error
+	channelIDAndError struct {
+		id  channel.ID
+		err error
 	}
 )
 
@@ -238,7 +238,7 @@ func (r *role) ChannelProposal(rng *rand.Rand, cfg *ExecConfig) *client.ChannelP
 func (r *role) AcceptAllPropHandler(rng *rand.Rand) *acceptAllPropHandler {
 	return &acceptAllPropHandler{
 		r:     r,
-		chans: make(chan channelAndError),
+		chans: make(chan channelIDAndError),
 		rng:   rng,
 	}
 }
@@ -250,10 +250,10 @@ func (h *acceptAllPropHandler) HandleProposal(req *client.ChannelProposal, res *
 
 	part := h.r.setup.Wallet.NewRandomAccount(h.rng).Address()
 	h.r.log.Debugf("Accepting with participant: %v", part)
-	ch, err := res.Accept(ctx, client.ProposalAcc{
+	id, err := res.Accept(ctx, client.ProposalAcc{
 		Participant: part,
 	})
-	h.chans <- channelAndError{ch, err}
+	h.chans <- channelIDAndError{id, err}
 }
 
 // Next waits for the next incoming proposal. If the next proposal does not come
@@ -266,7 +266,7 @@ func (h *acceptAllPropHandler) Next() (*paymentChannel, error) {
 			return nil, ce.err
 		}
 		// Client.OnNewChannel callback adds paymentChannel wrapper to the chans map
-		return h.r.chans[ce.channel.ID()], nil
+		return h.r.chans[ce.id], nil
 	case <-time.After(h.r.setup.Timeout):
 		return nil, errors.New("timeout passed")
 	}
