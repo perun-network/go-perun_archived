@@ -19,6 +19,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,16 +36,41 @@ var (
 	// compile time check that we implement the channel backend interface.
 	_ channel.Backend = new(Backend)
 	// Definition of ABI datatypes.
-	abiUint256, _       = abi.NewType("uint256", "", nil)
-	abiUint256Arr, _    = abi.NewType("uint256[]", "", nil)
-	abiUint256ArrArr, _ = abi.NewType("uint256[][]", "", nil)
-	abiAddress, _       = abi.NewType("address", "", nil)
-	abiAddressArr, _    = abi.NewType("address[]", "", nil)
-	abiBytes, _         = abi.NewType("bytes", "", nil)
-	abiBytes32, _       = abi.NewType("bytes32", "", nil)
-	abiUint64, _        = abi.NewType("uint64", "", nil)
-	abiBool, _          = abi.NewType("bool", "", nil)
-	abiString, _        = abi.NewType("string", "", nil)
+	abiUint256, _        = abi.NewType("uint256", "", nil)
+	abiUint256Arr, _     = abi.NewType("uint256[]", "", nil)
+	abiUint256ArrArr, _  = abi.NewType("uint256[][]", "", nil)
+	abiAddress, _        = abi.NewType("address", "", nil)
+	abiAddressArr, _     = abi.NewType("address[]", "", nil)
+	abiBytes, _          = abi.NewType("bytes", "", nil)
+	abiBytes32, _        = abi.NewType("bytes32", "", nil)
+	abiUint64, _         = abi.NewType("uint64", "", nil)
+	abiBool, _           = abi.NewType("bool", "", nil)
+	abiString, _         = abi.NewType("string", "", nil)
+	abiChannelParamsType = func() abi.Type {
+		parsed, err := abi.JSON(strings.NewReader(adjudicator.AdjudicatorABI))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		failWithMessage := func(specificErrorMessage string) {
+			generalErrorMessage := "failed to load ABI type for channel parameters"
+			log.Fatalf("%s: %s\n", generalErrorMessage, specificErrorMessage)
+		}
+
+		methodConclude, ok := parsed.Methods["conclude"]
+		if !ok {
+			failWithMessage("adjudicator ABI must have method `conclude`")
+		} else if len(methodConclude.Inputs) < 1 {
+			failWithMessage("method `conclude` must have at least 1 parameter")
+		}
+
+		firstInputOfConclude := methodConclude.Inputs[0]
+		if firstInputOfConclude.Name != "params" {
+			failWithMessage("first parameter of method `conclude` must be named 'params'")
+		}
+
+		return firstInputOfConclude.Type
+	}()
 )
 
 // Backend implements the interface defined in channel/Backend.go.
@@ -156,18 +182,9 @@ func channelStateToEthState(s *channel.State) adjudicator.ChannelState {
 // encodeParams encodes the parameters as with abi.encode() in the smart contracts.
 func encodeParams(params *adjudicator.ChannelParams) ([]byte, error) {
 	args := abi.Arguments{
-		{Type: abiUint256},
-		{Type: abiUint256},
-		{Type: abiAddress},
-		{Type: abiAddressArr},
+		{Type: abiChannelParamsType},
 	}
-	enc, err := args.Pack(
-		params.ChallengeDuration,
-		params.Nonce,
-		params.App,
-		params.Participants,
-	)
-	return enc, errors.WithStack(err)
+	return args.Pack(params)
 }
 
 // encodeState encodes the state as with abi.encode() in the smart contracts.
