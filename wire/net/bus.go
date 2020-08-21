@@ -16,13 +16,24 @@ package net
 
 import (
 	"context"
+	"math"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 
 	"perun.network/go-perun/log"
 	"perun.network/go-perun/wallet"
 	"perun.network/go-perun/wire"
+)
+
+// Sleeping between sending retries is done in a x^1.5 curve which is
+// scaled by busRetryCurveScale, capped at busRetryMaxTimeout, and starts at
+// busRetryMinTimeout for x=0.
+const (
+	busRetryMinTimeout = 5 * time.Millisecond
+	busRetryCurveScale = 500 * time.Millisecond
+	busRetryMaxTimeout = 10 * time.Minute
 )
 
 // Bus implements the wire.Bus interface using network connections.
@@ -66,9 +77,11 @@ func (b *Bus) SubscribeClient(c wire.Consumer, addr wire.Address) error {
 // communication channel to the recipient using the bus' dialer. Only returns
 // when the context is aborted or the envelope was sent successfully.
 func (b *Bus) Publish(ctx context.Context, e *wire.Envelope) (err error) {
-	for {
+	for failures := 0; ; failures++ {
 		var ep *Endpoint
 		if ep, err = b.reg.Get(ctx, e.Recipient); err == nil {
+			// When we had a successful connection established, reset failures.
+			failures = 0
 			if err = ep.Send(ctx, e); err == nil {
 				return nil
 			}
@@ -79,6 +92,12 @@ func (b *Bus) Publish(ctx context.Context, e *wire.Envelope) (err error) {
 		case <-b.ctx().Done():
 			return errors.Errorf("publishing %T envelope: Bus closed", e.Msg)
 		default:
+			timeout := busRetryMinTimeout +
+				time.Duration(math.Pow(float64(failures), 1.5))*busRetryCurveScale
+			if timeout > busRetryMaxTimeout {
+				timeout = busRetryMaxTimeout
+			}
+			time.Sleep(timeout)
 		}
 	}
 }
