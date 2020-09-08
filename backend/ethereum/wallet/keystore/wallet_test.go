@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package wallet_test
+package keystore_test
 
 import (
 	"bytes"
@@ -38,13 +38,13 @@ const (
 )
 
 func TestGenericSignatureTests(t *testing.T) {
-	setup := newSetup()
+	setup := newSetup(t)
 	test.GenericSignatureTest(t, setup)
 	test.GenericSignatureSizeTest(t, setup)
 }
 
 func TestGenericAddressTests(t *testing.T) {
-	test.GenericAddressTest(t, newSetup())
+	test.GenericAddressTest(t, newSetup(t))
 }
 
 func TestWallet_Contains(t *testing.T) {
@@ -70,7 +70,7 @@ func TestSignatures(t *testing.T) {
 func TestBackend(t *testing.T) {
 	backend := new(ethwallet.Backend)
 
-	s := newSetup()
+	s := newSetup(t)
 
 	buff := bytes.NewReader(s.AddressBytes)
 	addr, err := backend.DecodeAddress(buff)
@@ -83,12 +83,10 @@ func TestBackend(t *testing.T) {
 	assert.Error(t, err, "Conversion from wrong address should fail")
 }
 
-func newSetup() *test.Setup {
+func newSetup(t require.TestingT) *test.Setup {
 	acc := ethwallettest.NewTmpWallet().NewAccount()
 	sampleBytes, err := hex.DecodeString(sampleAddr)
-	if err != nil {
-		panic("invalid sample address")
-	}
+	require.NoErrorf(t, err, "invalid sample address")
 
 	return &test.Setup{
 		UnlockedAccount: func() (wallet.Account, error) { return acc, nil },
