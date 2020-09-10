@@ -122,6 +122,7 @@ const (
 	Shutdown
 	AuthResponse
 	LedgerChannelProposal
+	SubChannelProposal
 	ChannelProposalAcc
 	ChannelProposalRej
 	ChannelUpdate

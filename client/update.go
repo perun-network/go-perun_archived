@@ -223,7 +223,67 @@ func (c *Channel) handleUpdateReq(
 	}
 
 	responder := &UpdateResponder{channel: c, pidx: pidx, req: req}
+
+	if fundingApproval, ok := c.getMatchingSubchannelFunding(req.ChannelUpdate); ok {
+		if responder.Accept(fundingApproval.ctx) != nil {
+			fundingApproval.done()
+			return
+		}
+	}
+
 	uh.HandleUpdate(req.ChannelUpdate, responder)
+}
+
+type subchannelFunding struct {
+	subAlloc *channel.SubAlloc
+	ctx      context.Context
+	funded   chan struct{}
+}
+
+func newSubchannelFunding(ctx context.Context, subAlloc *channel.SubAlloc) *subchannelFunding {
+	return &subchannelFunding{
+		subAlloc: subAlloc,
+		ctx:      ctx,
+		funded:   make(chan struct{}),
+	}
+}
+
+func (c *Channel) registerSubchannelFunding(subFunding *subchannelFunding) {
+	c.subchannelFundings[subFunding.subAlloc.ID] = subFunding //comment: use mutex or sync.Map?
+}
+
+func (c *Channel) getMatchingSubchannelFunding(u ChannelUpdate) (*subchannelFunding, bool) {
+	for i, subAlloc := range u.State.Locked {
+		if fundingApproval, ok := c.subchannelFundings[subAlloc.ID]; ok {
+			if fundingApproval.subAlloc.Equal(&u.State.Locked[i]) != nil {
+				return nil, false
+			}
+			return fundingApproval, true
+		}
+	}
+	return nil, false
+}
+
+func (h *subchannelFunding) done() {
+	h.funded <- struct{}{}
+}
+
+func (c *Channel) awaitSubchannelFunded(ctx context.Context, subchannelID channel.ID) error {
+	subFunding, ok := c.subchannelFundings[subchannelID]
+
+	if !ok {
+		return errors.New("not registered")
+	}
+
+	defer delete(c.subchannelFundings, subchannelID)
+
+	select {
+	case <-subFunding.funded:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return nil
 }
 
 func (c *Channel) handleUpdateAcc(

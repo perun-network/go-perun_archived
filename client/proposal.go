@@ -16,6 +16,7 @@ package client
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/pkg/errors"
 
@@ -50,7 +51,7 @@ type (
 	ProposalResponder struct {
 		client *Client
 		peer   wire.Address
-		req    *BaseChannelProposal
+		req    ChannelProposal
 		called atomic.Bool
 	}
 
@@ -88,7 +89,7 @@ func (r *ProposalResponder) Accept(ctx context.Context, acc ProposalAcc) (*Chann
 		log.Panic("multiple calls on proposal responder")
 	}
 
-	return r.client.handleChannelProposalAcc(ctx, r.peer, r.req.Proposal(), acc)
+	return r.client.handleChannelProposalAcc(ctx, r.peer, r.req, acc)
 }
 
 // Reject lets the user signal that they reject the channel proposal.
@@ -118,25 +119,25 @@ func (r *ProposalResponder) Reject(ctx context.Context, reason string) error {
 // After the channel got successfully created, the user is required to start the
 // channel watcher with Channel.Watch() on the returned channel
 // controller.
-func (c *Client) ProposeChannel(ctx context.Context, req ChannelProposal) (*Channel, error) {
-	if ctx == nil || req == nil {
+func (c *Client) ProposeChannel(ctx context.Context, prop ChannelProposal) (*Channel, error) {
+	if ctx == nil || prop == nil {
 		c.log.Panic("invalid nil argument")
 	}
 
-	// 1. check valid proposal
-	peer := req.Proposal().PeerAddrs[proposeeIdx]
-	if err := c.validTwoPartyProposal(req.Proposal(), proposerIdx, peer); err != nil {
+	// 1. validate input
+	peer := prop.Proposal().PeerAddrs[proposeeIdx]
+	if err := c.validTwoPartyProposal(prop, proposerIdx, peer); err != nil {
 		return nil, errors.WithMessage(err, "invalid channel proposal")
 	}
 
-	// 2. send proposal and wait for response, create params
-	params, err := c.exchangeTwoPartyProposal(ctx, req)
+	// 2. send proposal, wait for response, create channel object
+	ch, err := c.proposeTwoPartyChannel(ctx, prop)
 	if err != nil {
-		return nil, errors.WithMessage(err, "sending proposal")
+		return nil, errors.WithMessage(err, "channel proposal")
 	}
 
-	// 3. Create channel controller, fund channel, and return the controller
-	return c.setupChannel(ctx, req.Proposal(), params, proposerIdx)
+	// 3. fund
+	return ch, c.fundChannel(ctx, ch, prop)
 }
 
 // handleChannelProposal implements the receiving side of the (currently)
@@ -146,20 +147,33 @@ func (c *Client) ProposeChannel(ctx context.Context, req ChannelProposal) (*Chan
 // This handler is dispatched from the Client.Handle routine.
 func (c *Client) handleChannelProposal(
 	handler ProposalHandler, p wire.Address, req ChannelProposal) {
-	if err := c.validTwoPartyProposal(req.Proposal(), proposeeIdx, p); err != nil {
+	if err := c.validTwoPartyProposal(req, proposeeIdx, p); err != nil {
 		c.logPeer(p).Debugf("received invalid channel proposal: %v", err)
 		return
 	}
 
 	c.logPeer(p).Trace("calling proposal handler")
-	responder := &ProposalResponder{client: c, peer: p, req: req.Proposal()}
+	responder := &ProposalResponder{client: c, peer: p, req: req}
 	handler.HandleProposal(req, responder)
 	// control flow continues in responder.Accept/Reject
 }
 
 func (c *Client) handleChannelProposalAcc(
 	ctx context.Context, p wire.Address,
-	req *BaseChannelProposal, acc ProposalAcc,
+	prop ChannelProposal, acc ProposalAcc,
+) (ch *Channel, err error) {
+	if ch, err = c.acceptChannelProposal(ctx, prop, p, acc); err != nil {
+		return ch, errors.WithMessage(err, "accept channel proposal")
+	}
+
+	return ch, c.fundChannel(ctx, ch, prop)
+}
+
+func (c *Client) acceptChannelProposal(
+	ctx context.Context,
+	prop ChannelProposal,
+	p wire.Address,
+	acc ProposalAcc,
 ) (*Channel, error) {
 	if acc.Participant == nil {
 		c.logPeer(p).Error("user returned nil Participant in ProposalAcc")
@@ -171,22 +185,21 @@ func (c *Client) handleChannelProposalAcc(
 	// yet so the cache predicate is coarser than the later subscription.
 	enableVer0Cache(ctx, c.conn)
 
-	msgAccept := req.NewChannelProposalAcc(acc.Participant, WithRandomNonce())
+	msgAccept := prop.Proposal().NewChannelProposalAcc(acc.Participant, WithRandomNonce())
 	if err := c.conn.pubMsg(ctx, msgAccept, p); err != nil {
 		c.logPeer(p).Errorf("error sending proposal acceptance: %v", err)
 		return nil, errors.WithMessage(err, "sending proposal acceptance")
 	}
 
-	params := finalizeCPP(req, msgAccept)
-	return c.setupChannel(ctx, req, params, proposeeIdx)
+	return c.completeCPP(ctx, prop, msgAccept, proposeeIdx)
 }
 
 func (c *Client) handleChannelProposalRej(
 	ctx context.Context, p wire.Address,
-	req *BaseChannelProposal, reason string,
+	req ChannelProposal, reason string,
 ) error {
 	msgReject := &ChannelProposalRej{
-		ProposalID: req.ProposalID(),
+		ProposalID: req.Proposal().ProposalID(),
 		Reason:     reason,
 	}
 	if err := c.conn.pubMsg(ctx, msgReject, p); err != nil {
@@ -196,13 +209,13 @@ func (c *Client) handleChannelProposalRej(
 	return nil
 }
 
-// exchangeTwoPartyProposal implements the multi-party channel proposal
+// proposeTwoPartyChannel implements the multi-party channel proposal
 // protocol for the two-party case. It returns the agreed upon channel
 // parameters.
-func (c *Client) exchangeTwoPartyProposal(
+func (c *Client) proposeTwoPartyChannel( //comment: rename to `twoPartyProposal`?
 	ctx context.Context,
 	proposal ChannelProposal,
-) (*channel.Params, error) {
+) (*Channel, error) {
 	propBase := proposal.Proposal()
 	peer := propBase.PeerAddrs[proposeeIdx]
 
@@ -218,6 +231,12 @@ func (c *Client) exchangeTwoPartyProposal(
 			(e.Msg.Type() == wire.ChannelProposalRej &&
 				e.Msg.(*ChannelProposalRej).ProposalID == proposalID)
 	}
+	/* comment:
+	* - rename `isResponse` to `filter`?
+	* - allowing an arbitrary function as subscription filter doesn't seem good practice to me
+	* -- risk of performance degradation
+	* -- probably hard or impossible to map to standard pub/sub technology like apache kafka (see https://kafka.apache.org/26/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html#subscribe-java.util.Collection-)
+	 */
 	receiver := wire.NewReceiver()
 	// nolint:errcheck
 	defer receiver.Close()
@@ -239,7 +258,7 @@ func (c *Client) exchangeTwoPartyProposal(
 	}
 
 	acc := env.Msg.(*ChannelProposalAcc) // this is safe because of predicate isResponse
-	return finalizeCPP(propBase, acc), nil
+	return c.completeCPP(ctx, proposal, acc, proposerIdx)
 }
 
 // validTwoPartyProposal checks that the proposal is valid in the two-party
@@ -247,36 +266,55 @@ func (c *Client) exchangeTwoPartyProposal(
 // the receiver to have index 1. The generic validity of the proposal is also
 // checked.
 func (c *Client) validTwoPartyProposal(
-	proposal *BaseChannelProposal,
+	proposal ChannelProposal,
 	ourIdx int,
 	peerAddr wallet.Address,
 ) error {
-	if err := proposal.Valid(); err != nil {
+	base := proposal.Proposal()
+	if err := base.Valid(); err != nil {
 		return err
 	}
 
-	if len(proposal.PeerAddrs) != 2 {
-		return errors.Errorf("exptected 2 peers, got %d", len(proposal.PeerAddrs))
+	if len(base.PeerAddrs) != 2 {
+		return errors.Errorf("exptected 2 peers, got %d", len(proposal.Proposal().PeerAddrs))
 	}
 
 	peerIdx := ourIdx ^ 1
 	// In the 2PCPP, the proposer is expected to have index 0
-	if !proposal.PeerAddrs[peerIdx].Equals(peerAddr) {
+	if !base.PeerAddrs[peerIdx].Equals(peerAddr) {
 		return errors.Errorf("remote peer doesn't have peer index %d", peerIdx)
 	}
 
 	// In the 2PCPP, the receiver is expected to have index 1
-	if !proposal.PeerAddrs[ourIdx].Equals(c.address) {
+	if !base.PeerAddrs[ourIdx].Equals(c.address) {
 		return errors.Errorf("we don't have peer index %d", ourIdx)
+	}
+
+	if proposal.Type() == wire.SubChannelProposal {
+		/*
+			comment:
+			- anything specific we need to check for `SubChannelProposal`?
+			-- e.g., should we check that parent channel exists? and has sufficient funds? uses same assets? has same participants? ...
+			- should we change `validTwoPartyProposal` to receive type `ChannelProposal`?
+			-- a similar comment can be made for `exchangeTwoPartyProposal`, `setupChannel`. it seems like the abstraction `ChannelProposal` was implemented only half-way
+		*/
+		return errors.New("not implemented yet")
 	}
 
 	return nil
 }
 
-func finalizeCPP(prop *BaseChannelProposal, acc *ChannelProposalAcc) *channel.Params {
-	nonce := calcNonce(nonceShares(prop.NonceShare, acc.NonceShare))
-	parts := participants(prop.ParticipantAddr, acc.ParticipantAddr)
-	return channel.NewParamsUnsafe(prop.ChallengeDuration, parts, prop.App, nonce)
+func (c *Client) completeCPP(
+	ctx context.Context,
+	prop ChannelProposal,
+	acc *ChannelProposalAcc,
+	partIdx channel.Index,
+) (*Channel, error) {
+	nonce := calcNonce(nonceShares(prop.Proposal().NonceShare, acc.NonceShare))
+	parts := participants(prop.Proposal().ParticipantAddr, acc.ParticipantAddr)
+	params := channel.NewParamsUnsafe(prop.Proposal().ChallengeDuration, parts, prop.Proposal().App, nonce)
+
+	return c.completeChannelInit(ctx, prop, params, partIdx) //comment: move function content to here?
 }
 
 func participants(proposer, proposee wallet.Address) []wallet.Address {
@@ -305,7 +343,7 @@ func calcNonce(nonceShares []NonceShare) channel.Nonce {
 	return channel.NonceFromBytes(hasher.Sum(nil))
 }
 
-// setupChannel sets up a new channel controller for the given proposal and
+// completeChannelInit sets up a new channel controller for the given proposal and
 // params, using the wallet to unlock the account for our participant.
 //
 // The initial state with signatures is exchanged. The channel will be funded
@@ -317,9 +355,9 @@ func calcNonce(nonceShares []NonceShare) channel.Nonce {
 // It is important that the passed context does not cancel before twice the
 // ChallengeDuration has passed (at least for real blockchain backends with wall
 // time), or the channel cannot be settled if a peer times out funding.
-func (c *Client) setupChannel(
+func (c *Client) completeChannelInit( //comment: rename from `setupChannel`, update docu
 	ctx context.Context,
-	prop *BaseChannelProposal,
+	prop ChannelProposal,
 	params *channel.Params,
 	idx channel.Index, // our index
 ) (*Channel, error) {
@@ -332,46 +370,137 @@ func (c *Client) setupChannel(
 		return nil, errors.WithMessage(err, "unlocking account")
 	}
 
-	ch, err := c.newChannel(acc, prop.PeerAddrs, *params)
+	ch, err := c.newChannel(acc, prop.Proposal().PeerAddrs, *params)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := c.pr.ChannelCreated(ctx, ch.machine, prop.PeerAddrs); err != nil {
+	// if subchannel proposal receiver, setup register funding update
+	if prop.Type() == wire.SubChannelProposal && idx == proposeeIdx {
+		parentChannelID := prop.(*SubChannelProposal).ParentChannelID
+		parentChannel, ok := c.channels.Get(parentChannelID)
+		if !ok {
+			return ch, errors.New("referenced parent channel not found")
+		}
+		subAlloc := &channel.SubAlloc{ID: ch.ID(), Bals: ch.State().Allocation.Sum()}
+		parentChannel.registerSubchannelFunding(newSubchannelFunding(ctx, subAlloc))
+	}
+
+	if err := c.pr.ChannelCreated(ctx, ch.machine, prop.Proposal().PeerAddrs); err != nil {
 		return ch, errors.WithMessage(err, "persisting new channel")
 	}
 
-	if err := ch.init(ctx, prop.InitBals, prop.InitData); err != nil {
+	if err := ch.init(ctx, prop.Proposal().InitBals, prop.Proposal().InitData); err != nil {
 		return ch, errors.WithMessage(err, "setting initial bals and data")
 	}
-	if err := ch.initExchangeSigsAndEnable(ctx); err != nil {
+	if err := ch.initExchangeSigsAndEnable(ctx); err != nil { //comment: this is a bit weird. we are sending messages on the channel connection before the channel proposal protocol has been completed
 		return ch, errors.WithMessage(err, "exchanging initial sigs and enabling state")
 	}
 
+	//comment: funding removed, update function documentation
+
+	return ch, nil
+}
+
+func (c *Client) fundChannel(ctx context.Context, ch *Channel, prop ChannelProposal) (err error) {
+	switch prop.Type() {
+	case wire.LedgerChannelProposal:
+		if err = c.fundLedgerChannel(ctx, ch); err != nil {
+			return errors.WithMessage(err, "funding ledger channel")
+		}
+
+	case wire.SubChannelProposal:
+		switch ch.Idx() {
+		case proposerIdx:
+			err = c.fundSubchannel(ctx, prop.(*SubChannelProposal), ch)
+			return errors.WithMessage(err, "funding subchannel")
+		case proposeeIdx:
+			parentChannelID := prop.(*SubChannelProposal).ParentChannelID
+			parentChannel, ok := c.channels.Get(parentChannelID)
+			if !ok {
+				return errors.New("referenced parent channel not found")
+			}
+			return parentChannel.awaitSubchannelFunded(ctx, ch.ID())
+		default:
+			return errors.New("invalid participant index")
+		}
+
+	default:
+		return errors.New("invalid channel proposal type")
+	}
+	return nil
+}
+
+func (c *Client) completeFunding(ctx context.Context, ch *Channel) error {
+	params := ch.Params()
+	if err := ch.machine.SetFunded(ctx); err != nil {
+		return errors.WithMessage(err, "error in SetFunded()")
+	}
+	if !c.channels.Put(params.ID(), ch) {
+		return errors.New("channel already exists")
+	}
+	c.wallet.IncrementUsage(params.Parts[ch.machine.Idx()])
+	return nil
+}
+
+func (c *Client) fundLedgerChannel(ctx context.Context, ch *Channel) (err error) {
 	if err = c.funder.Fund(ctx,
 		channel.FundingReq{
-			Params: params,
+			Params: ch.Params(),
 			State:  ch.machine.State(), // initial state
 			Idx:    ch.machine.Idx(),
 		}); channel.IsFundingTimeoutError(err) {
 		ch.Log().Warnf("Peers timed out funding channel(%v); settling...", err)
 		serr := ch.Settle(ctx)
-		return ch, errors.WithMessagef(err,
+		return errors.WithMessagef(err,
 			"peers timed out funding (subsequent settlement error: %v)", serr)
 	} else if err != nil { // other runtime error
 		ch.Log().Warnf("error while funding channel: %v", err)
-		return ch, errors.WithMessage(err, "error while funding channel")
+		return errors.WithMessage(err, "error while funding channel")
 	}
 
-	if err := ch.machine.SetFunded(ctx); err != nil {
-		return ch, errors.WithMessage(err, "error in SetFunded()")
-	}
-	if !c.channels.Put(params.ID(), ch) {
-		return ch, errors.New("channel already exists")
-	}
-	c.wallet.IncrementUsage(acc.Address())
+	return c.completeFunding(ctx, ch)
+}
 
-	return ch, nil
+func (c *Client) fundSubchannel(ctx context.Context, prop *SubChannelProposal, subChannel *Channel) error {
+	//comment: implement this functionality in subchannel funder?
+
+	parentChannel, ok := c.channels.Get(prop.ParentChannelID)
+	if !ok {
+		return errors.New("referenced channel does not exist")
+	}
+
+	//comment: lock the channel? no updates should be performed during subchannel funding
+	state := parentChannel.State().Clone()
+
+	lockedBalances := make([]*big.Int, len(prop.InitBals.Assets))
+	//comment: check asset equality? or is this already checked earlier?
+	//comment: check OTY's merge request !343 (#406) (funding requests), can probably help with implementing this part below
+	// introduces channel.Balances = [][]Bal, which has Sum()
+	for a, assetBalances := range prop.InitBals.Balances {
+		var acc *big.Int = big.NewInt(0)
+		for u, userBalance := range assetBalances {
+			allocated := state.Allocation.Balances[a][u]
+			allocated.Sub(allocated, userBalance)
+			if allocated.Cmp(big.NewInt(0)) < 0 {
+				return errors.New("insufficient funds")
+			}
+			acc.Add(acc, userBalance)
+		}
+		lockedBalances[a] = acc
+	}
+
+	subAlloc := channel.SubAlloc{ID: subChannel.ID(), Bals: lockedBalances}
+	state.Locked = append(state.Locked, subAlloc)
+
+	state.Version++
+
+	cu := ChannelUpdate{state, proposerIdx}
+	if err := parentChannel.Update(ctx, cu); err != nil {
+		return errors.WithMessage(err, "parent channel funding update")
+	}
+
+	return c.completeFunding(ctx, subChannel)
 }
 
 // enableVer0Cache enables caching of incoming version 0 signatures.

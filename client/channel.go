@@ -41,6 +41,8 @@ type Channel struct {
 	onUpdate    func(from, to *channel.State)
 	adjudicator channel.Adjudicator
 	wallet      wallet.Wallet
+
+	subchannelFundings map[channel.ID]*subchannelFunding
 }
 
 // newChannel is internally used by the Client to create a new channel
@@ -131,7 +133,7 @@ func (c *Channel) Params() *channel.Params {
 
 // State returns the current state.
 // Clone it if you want to modify it.
-func (c *Channel) State() *channel.State {
+func (c *Channel) State() *channel.State { //comment: isn't it really dangerous to return a pointer to the actual state object?
 	c.machMtx.Lock()
 	defer c.machMtx.Unlock()
 
