@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package channel
+package channel_test
 
 import (
+	"context"
 	"encoding/hex"
 	"io"
 	"math/big"
@@ -23,7 +24,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	ethchannel "perun.network/go-perun/backend/ethereum/channel"
+	ethchanneltest "perun.network/go-perun/backend/ethereum/channel/test"
 	"perun.network/go-perun/backend/ethereum/wallet"
 	ethwallettest "perun.network/go-perun/backend/ethereum/wallet/test"
 	"perun.network/go-perun/channel"
@@ -33,6 +37,36 @@ import (
 	perunwallet "perun.network/go-perun/wallet"
 	wallettest "perun.network/go-perun/wallet/test"
 )
+
+func TestCalcID(t *testing.T) {
+	rng := pkgtest.Prng(t)
+	s := ethchanneltest.NewSetup(t, rng, 1)
+
+	for i := 0; i < 250; i++ {
+		params := test.NewRandomParams(rng)
+		ethParams := ethchannel.ChannelParamsToEthParams(params)
+		ethId, err := s.Adjs[0].CalcChannelID(context.TODO(), ethParams)
+		chID := channel.CalcID(params)
+
+		require.NoError(t, err)
+		require.Equal(t, chID, ethId)
+	}
+}
+
+func TestHashState(t *testing.T) {
+	rng := pkgtest.Prng(t)
+	s := ethchanneltest.NewSetup(t, rng, 1)
+
+	for i := 0; i < 250; i++ {
+		state := test.NewRandomState(rng)
+		ethState := ethchannel.ChannelStateToEthState(state)
+		ethId, err := s.Adjs[0].CalcStateHash(context.TODO(), ethState)
+		chID := ethchannel.HashState(state)
+
+		require.NoError(t, err)
+		require.Equal(t, chID, ethId)
+	}
+}
 
 func TestGenericTests(t *testing.T) {
 	setup := newChannelSetup(pkgtest.Prng(t))
@@ -108,11 +142,12 @@ func TestChannelID(t *testing.T) {
 			assert.Equal(t, preCalc, cID[:], "ChannelID should match the testcase")
 		})
 	}
+
 }
 
 func TestAssetSerialization(t *testing.T) {
 	rng := pkgtest.Prng(t)
-	var asset Asset = ethwallettest.NewRandomAddress(rng)
+	var asset ethchannel.Asset = ethwallettest.NewRandomAddress(rng)
 	reader, writer := io.Pipe()
 	done := make(chan struct{})
 
@@ -121,7 +156,7 @@ func TestAssetSerialization(t *testing.T) {
 		assert.NoError(t, asset.Encode(writer))
 	}()
 
-	asset2, err := DecodeAsset(reader)
+	asset2, err := ethchannel.DecodeAsset(reader)
 	assert.NoError(t, err, "Decode asset should not produce error")
 	assert.Equal(t, &asset, asset2, "Decode asset should return the initial asset")
 	<-done
