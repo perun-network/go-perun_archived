@@ -123,7 +123,12 @@ func (ch *paymentChannel) sendTransfer(amount channel.Bal, desc string) {
 
 func (ch *paymentChannel) recvUpdate(accept bool, desc string) *channel.State {
 	ch.log.Debugf("Receiving update: %s, accept: %t", desc, accept)
-	ch.handler <- accept
+	select {
+	case ch.handler <- accept:
+	case <-time.After(ch.r.timeout):
+		ch.r.t.Error("timeout: expected incoming channel update")
+		return nil
+	}
 
 	select {
 	case res := <-ch.res:
@@ -209,13 +214,27 @@ func (ch *paymentChannel) Handle(up client.ChannelUpdate, res *client.UpdateResp
 	ctx, cancel := context.WithTimeout(context.Background(), ch.r.timeout)
 	defer cancel()
 
-	accept := <-ch.handler
+	var accept bool
+	select {
+	case accept = <-ch.handler:
+	case <-time.After(ch.r.timeout):
+		ch.r.t.Error("timeout: awaiting update handling")
+	}
+
+	putResponseWithTimeout := func(r handlerRes) {
+		select {
+		case ch.res <- r:
+		case <-time.After(ch.r.timeout):
+			ch.r.t.Error("timeout: queuing handler response")
+		}
+	}
+
 	if accept {
 		ch.log.Debug("Accepting...")
-		ch.res <- handlerRes{up, res.Accept(ctx)}
+		putResponseWithTimeout(handlerRes{up, res.Accept(ctx)})
 	} else {
 		ch.log.Debug("Rejecting...")
-		ch.res <- handlerRes{up, res.Reject(ctx, "Rejection")}
+		putResponseWithTimeout(handlerRes{up, res.Reject(ctx, "Rejection")})
 	}
 }
 

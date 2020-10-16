@@ -276,7 +276,11 @@ func (r *role) GoHandle(rng *rand.Rand) (h *acceptAllPropHandler, wait func()) {
 
 	return propHandler, func() {
 		r.log.Debug("Waiting for request handler to return...")
-		<-done
+		select {
+		case <-done:
+		case <-time.After(r.timeout):
+			r.t.Error("timeout: waiting for handler response")
+		}
 	}
 }
 
