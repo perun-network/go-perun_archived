@@ -145,12 +145,15 @@ func GenericPersistRestorerTest(
 				})
 
 				ch.SetWithdrawing(t)
+
+				t.BarrierN("withdrawing", numChans*numPeers)
+				t.Wait("assertedPeers")
+
 				ch.SetWithdrawn(t)
 			})
 		}
 	}
-	ct.Wait("testing")
-
+	ct.Wait("withdrawing")
 	for pIdx, peer := range peers {
 		it, err := pr.RestorePeer(peer)
 		require.NoError(t, err)
@@ -165,7 +168,6 @@ func GenericPersistRestorerTest(
 	// Test ActivePeers
 	persistedPeers, err := pr.ActivePeers(ctx)
 	require.NoError(t, err)
-	require.Len(t, persistedPeers, numPeers+1) // + local client
 peerLoop:
 	for idx, addr := range peers {
 		for _, paddr := range persistedPeers {
@@ -175,12 +177,8 @@ peerLoop:
 		}
 		t.Errorf("Peer[%d] not found in persisted peers", idx)
 	}
-
-	for _, chmap := range channels {
-		for _, ch := range chmap {
-			ch.Settle(t)
-		}
-	}
+	ct.Barrier("assertedPeers")
+	ct.Wait("testing")
 
 	ps, err := pr.ActivePeers(ctx)
 	require.NoError(t, err)
