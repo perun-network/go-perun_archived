@@ -109,27 +109,14 @@ func (c *ContractBackend) pastOffsetBlockNum(ctx context.Context) (uint64, error
 // NewTransactor returns bind.TransactOpts with the current nonce, suggested gas
 // price and account of the ContractBackend. The gasLimit and value in wei are
 // taken from the parameters.
-func (c *ContractBackend) NewTransactor(ctx context.Context, valueWei *big.Int, gasLimit uint64, acc accounts.Account) (*bind.TransactOpts, error) {
-	nonce, err := c.PendingNonceAt(ctx, acc.Address)
-	if err != nil {
-		return nil, errors.Wrap(err, "querying pending nonce")
-	}
-
-	gasPrice, err := c.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "querying suggested gas price")
-	}
-
+func (c *ContractBackend) NewTransactor(ctx context.Context, gasLimit uint64, acc accounts.Account) (*bind.TransactOpts, error) {
 	auth, err := c.tr.NewTransactor(acc)
 	if err != nil {
 		return nil, errors.WithMessage(err, "creating transactor")
 	}
 
-	auth.Nonce = new(big.Int).SetUint64(nonce)
-	auth.Value = valueWei    // in wei
 	auth.GasLimit = gasLimit // in units
-	auth.GasPrice = gasPrice
-	auth.Context = ctx // reuse query context as transactor context
+	auth.Context = ctx       // reuse query context as transactor context
 
 	return auth, nil
 }
