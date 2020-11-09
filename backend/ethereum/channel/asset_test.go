@@ -36,6 +36,7 @@ func TestValidateAssetHolderETH(t *testing.T) {
 func TestValidateAssetHolderERC20(t *testing.T) {
 	rng := pkgtest.Prng(t)
 	token := common.Address(ethwallettest.NewRandomAddress(rng))
+	t.Logf("token address is %x", token)
 	deployer := func(ctx context.Context,
 		backend ethchannel.ContractBackend,
 		adjudicatorAddr common.Address,
@@ -43,7 +44,10 @@ func TestValidateAssetHolderERC20(t *testing.T) {
 		return ethchannel.DeployERC20Assetholder(ctx, backend, adjudicatorAddr, token, deployer)
 	}
 
-	testValidateAssetHolder(t, deployer, ethchannel.ValidateAssetHolderERC20)
+	testValidateAssetHolder(t, deployer, func(ctx context.Context,
+		backend bind.ContractBackend, assetHolderETH, adjudicator common.Address) error {
+		return ethchannel.ValidateAssetHolderERC20(ctx, backend, assetHolderETH, adjudicator, token)
+	})
 }
 
 func testValidateAssetHolder(t *testing.T,

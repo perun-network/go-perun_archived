@@ -17,6 +17,7 @@ package channel
 import (
 	"context"
 	"encoding/hex"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -48,8 +49,13 @@ func ValidateAssetHolderETH(ctx context.Context,
 // address is invalid. This error can be checked with function
 // IsErrInvalidContractCode.
 func ValidateAssetHolderERC20(ctx context.Context,
-	backend bind.ContractBackend, assetHolderERC20, adjudicator common.Address) error {
-	return validateAssetHolder(ctx, backend, assetHolderERC20, adjudicator, assets.AssetHolderERC20BinRuntime)
+	backend bind.ContractBackend, assetHolderERC20, adjudicator, token common.Address) error {
+	// Replace the place-holder token address with the correct value.
+	bytecode := strings.ReplaceAll(assets.AssetHolderERC20BinRuntime,
+		"7f0000000000000000000000000000000000000000000000000000000000000000",
+		"7f000000000000000000000000"+hex.EncodeToString(token[:]))
+
+	return validateAssetHolder(ctx, backend, assetHolderERC20, adjudicator, bytecode)
 }
 
 func validateAssetHolder(ctx context.Context,
