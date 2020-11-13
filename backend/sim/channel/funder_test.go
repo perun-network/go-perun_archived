@@ -93,8 +93,8 @@ func (ul *uniformLedger) CompareOnChainAlloc(params *channel.Params,
 
 // AdvanceTimeBy advances the time for the underlying Ledger. Just calls
 // `cancelFunc()` since the `simchannel.Ledger` does not have a concept of time.
-func (ul *uniformLedger) AdvanceTimeBy(cancelFunc context.CancelFunc, _ *testing.T, _ uint64) {
-	cancelFunc()
+func (ul *uniformLedger) AdvanceTimeBy(_ *testing.T, n uint64) {
+	ul.simLedger.Advance(n)
 }
 
 // NewNFunders creates a new prefunded blockchain for N participants and

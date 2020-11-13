@@ -125,7 +125,7 @@ type TestableLedger interface {
 
 	// AdvanceTimeBy advances the time for the underlying Ledger. Gets a `Duration`
 	// and a `context.CancelFunc` associated to the funding of a channel.
-	AdvanceTimeBy(context.CancelFunc, *testing.T, uint64)
+	AdvanceTimeBy(*testing.T, uint64)
 
 	// PostFundingCheck is a test which manually calls `funder.Fund(...)` and
 	// asserts that ledger-specific postconditions are satisfied. E.g. nonce checks.
@@ -180,7 +180,7 @@ func genericFundingTimeoutTest(t *testing.T, tl TestableLedger, faultyPeer, peer
 	}
 
 	time.Sleep(400 * time.Millisecond) // give all funders enough time to fund
-	tl.AdvanceTimeBy(cancel, t, params.ChallengeDuration)
+	tl.AdvanceTimeBy(t, params.ChallengeDuration)
 	ct.Wait("funding loop")
 }
 

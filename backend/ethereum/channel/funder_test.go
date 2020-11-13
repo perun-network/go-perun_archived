@@ -109,7 +109,7 @@ func (ul *uniformLedger) CompareOnChainAlloc(params *channel.Params,
 }
 
 // AdvanceTimeBy advances the time for the underlying Ledger.
-func (ul *uniformLedger) AdvanceTimeBy(ctx context.CancelFunc, t *testing.T, challengeDuration uint64) {
+func (ul *uniformLedger) AdvanceTimeBy(t *testing.T, challengeDuration uint64) {
 	// advance block time so that funding fails for non-funders
 	require.NoError(t, ul.simBackend.AdjustTime(time.Duration(challengeDuration)*time.Second))
 	ul.simBackend.Commit()

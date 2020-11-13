@@ -18,6 +18,7 @@ import (
 	"context"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -36,6 +37,9 @@ type (
 
 		// protect the ledger.
 		mu sync.Mutex
+
+		// progress of the ledger in blocks.
+		blknr uint64
 	}
 
 	// chanRecord holds on-chain channel information.
@@ -54,11 +58,39 @@ type (
 	}
 )
 
-// NewLedger generates a new ledger.
+// NewLedger generates and starts a new ledger.
 func NewLedger() *Ledger {
 	bals := make(map[Asset]map[wallet.AddrKey]channel.Bal)
 	channels := make(map[channel.ID]chanRecord)
-	return &Ledger{bals: bals, channels: channels}
+	l := &Ledger{bals: bals, channels: channels}
+	go func() {
+		for range time.NewTicker(time.Second * 1).C {
+			l.tick()
+		}
+	}()
+
+	return l
+}
+
+// tick advances the blockchain by a single block.
+func (l *Ledger) tick() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.blknr++
+}
+
+// Head returns the number of the current block.
+func (l *Ledger) Head() uint64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.blknr
+}
+
+// Advance advances the ledger by n blocks.
+func (l *Ledger) Advance(n uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.blknr = l.blknr + n
 }
 
 // NewPrefundedLedger generates a new ledger holding the starting balances
