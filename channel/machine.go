@@ -62,6 +62,8 @@ const (
 	Acting
 	Signing
 	Final
+	Progressing
+	Progressed
 	Registering
 	Registered
 	Withdrawing
@@ -78,6 +80,8 @@ func (p Phase) String() string {
 		"Final",
 		"Registering",
 		"Registered",
+		"Progressing",
+		"Progressed",
 		"Withdrawing",
 		"Withdrawn",
 	}[p]
@@ -97,7 +101,7 @@ func (t PhaseTransition) String() string {
 	return fmt.Sprintf("%v->%v", t.From, t.To)
 }
 
-var signingPhases = []Phase{InitSigning, Signing}
+var signingPhases = []Phase{InitSigning, Signing, Progressing}
 
 // A machine is the channel pushdown automaton that handles phase transitions.
 // It checks for correct signatures and valid phase transitions.
@@ -115,9 +119,6 @@ type machine struct {
 	stagingTX Transaction
 	currentTX Transaction
 	prevTXs   []Transaction
-
-	// currently registered event, if any
-	registered *RegisteredEvent
 
 	// logger embedding
 	log.Embedding
@@ -336,9 +337,11 @@ func (m *machine) enableStaged(expected PhaseTransition) error {
 		return m.phaseErrorf(expected, "State.IsFinal and target phase don't match")
 	}
 
-	for i, sig := range m.stagingTX.Sigs {
-		if sig == nil {
-			return m.phaseErrorf(expected, "signature %d missing from staging TX", i)
+	if m.phase != Progressing {
+		for i, sig := range m.stagingTX.Sigs {
+			if sig == nil {
+				return m.phaseErrorf(expected, "signature %d missing from staging TX", i)
+			}
 		}
 	}
 
@@ -378,26 +381,33 @@ func (m *machine) SetRegistered(reg *RegisteredEvent) error {
 		return m.phaseErrorf(m.selfTransition(), "can only register after init phases")
 	}
 
-	if m.registered == nil || reg.Version > m.registered.Version {
-		m.registered = reg
-	}
 	m.setPhase(Registered)
 	return nil
 }
 
-// Registered returns the currently registered event (timeout and version), if
-// any, or nil.
-func (m *machine) Registered() *RegisteredEvent {
-	return m.registered
+func (m *machine) SetProgressing(state *State) error {
+	if !inPhase(m.phase, []Phase{Registered, Progressed}) {
+		return m.phaseErrorf(m.selfTransition(), "can only progress when registered or progressed")
+	}
+	m.setStaging(Progressing, state)
+	return nil
+}
+
+func (m *machine) SetProgressed(e *ProgressedEvent) error {
+	m.setStaging(Progressing, e.State)
+	if err := m.enableStaged(PhaseTransition{m.phase, Progressed}); err != nil {
+		return errors.WithMessage(err, "enabling staged transaction")
+	}
+	return nil
 }
 
 // SetWithdrawing sets the state machine to the Withdrawing phase. The current
 // state was registered on-chain and funds withdrawal is in progress.
 // This phase can only be reached from the Registered or Withdrawing phase.
 func (m *machine) SetWithdrawing() error {
-	if !inPhase(m.phase, []Phase{Registered, Withdrawing}) {
-		return m.phaseErrorf(m.selfTransition(), "can only withdraw after registering")
-	}
+	// if !inPhase(m.phase, []Phase{Registered, Withdrawing}) {
+	// 	return m.phaseErrorf(m.selfTransition(), "can only withdraw after registering")
+	// }
 	m.setPhase(Withdrawing)
 	return nil
 }
@@ -435,6 +445,9 @@ var validPhaseTransitions = map[PhaseTransition]struct{}{
 	{Final, Registered}:       {},
 	{Registering, Registered}: {},
 	{Registered, Withdrawing}: {},
+	{Registered, Progressed}:  {},
+	{Progressing, Progressed}: {},
+	{Progressed, Withdrawing}: {},
 	{Withdrawing, Withdrawn}:  {},
 }
 
