@@ -17,7 +17,6 @@ package test
 import (
 	"context"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 
 	"perun.network/go-perun/backend/ethereum/wallet"
@@ -25,17 +24,21 @@ import (
 	perun "perun.network/go-perun/wallet"
 )
 
+type nonceReader interface {
+	PendingNonceAt(ctx context.Context, account common.Address) (uint64, error)
+}
+
 // NonceDiff returns the difference between the nonce of `address` before and after calling `f` iff no other error was encountered.
-func NonceDiff(address perun.Address, ct bind.ContractTransactor, f func() error) (int, error) {
+func NonceDiff(address perun.Address, nr nonceReader, f func() error) (int, error) {
 	// Get the current nonce
-	oldNonce, err := ct.PendingNonceAt(context.Background(), common.Address(*address.(*wallet.Address)))
+	oldNonce, err := nr.PendingNonceAt(context.Background(), common.Address(*address.(*wallet.Address)))
 	if err != nil {
 		return -1, err
 	}
 	// Execute the function
 	fErr := f()
 	// Get the new nonce
-	newNonce, err := ct.PendingNonceAt(context.Background(), common.Address(*address.(*wallet.Address)))
+	newNonce, err := nr.PendingNonceAt(context.Background(), common.Address(*address.(*wallet.Address)))
 	if err != nil {
 		return -1, err
 	}

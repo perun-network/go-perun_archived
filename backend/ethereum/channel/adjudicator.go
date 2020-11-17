@@ -16,6 +16,7 @@ package channel
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -63,6 +64,11 @@ func NewAdjudicator(backend ContractBackend, contract common.Address, receiver c
 	}
 }
 
+// Progress progresses a channel state on-chain.
+func (a *Adjudicator) Progress(ctx context.Context, req channel.ProgressReq) error {
+	return a.callProgress(ctx, req)
+}
+
 func (a *Adjudicator) callRegister(ctx context.Context, req channel.AdjudicatorReq) error {
 	return a.call(ctx, req, a.contract.Register)
 }
@@ -71,15 +77,31 @@ func (a *Adjudicator) callRefute(ctx context.Context, req channel.AdjudicatorReq
 	return a.call(ctx, req, a.contract.Refute)
 }
 
-func (a *Adjudicator) callConclude(ctx context.Context, req channel.AdjudicatorReq) error {
-	// Wrapped call to Conclude, ignoring sig
+func (a *Adjudicator) callProgress(ctx context.Context, req channel.ProgressReq) error {
+	ethNewState := ToEthState(req.NewState)
+	ethActorIndex := big.NewInt(int64(req.Idx))
+
 	conclude := func(
 		opts *bind.TransactOpts,
 		params adjudicator.ChannelParams,
 		state adjudicator.ChannelState,
 		_ [][]byte,
 	) (*types.Transaction, error) {
-		return a.contract.Conclude(opts, params, state, []adjudicator.ChannelState{})
+		return a.contract.Progress(opts, params, state, ethNewState, ethActorIndex, req.Sig)
+	}
+	return a.call(ctx, req.AdjudicatorReq, conclude)
+}
+
+func (a *Adjudicator) callConclude(ctx context.Context, req channel.AdjudicatorReq, subStates map[channel.ID]*channel.State) error {
+	_subStates := subStatesToArray(req.Tx.State, subStates)
+
+	conclude := func(
+		opts *bind.TransactOpts,
+		params adjudicator.ChannelParams,
+		state adjudicator.ChannelState,
+		_ [][]byte,
+	) (*types.Transaction, error) {
+		return a.contract.Conclude(opts, params, state, _subStates)
 	}
 	return a.call(ctx, req, conclude)
 }
@@ -130,4 +152,19 @@ func (a *Adjudicator) call(ctx context.Context, req channel.AdjudicatorReq, fn a
 func ValidateAdjudicator(ctx context.Context,
 	backend bind.ContractCaller, adjudicatorAddr common.Address) error {
 	return validateContract(ctx, backend, adjudicatorAddr, adjudicator.AdjudicatorBinRuntime)
+}
+
+func subStatesToArray(state *channel.State, subStates map[channel.ID]*channel.State) (_subStates []adjudicator.ChannelState) {
+	for _, subAlloc := range state.Locked {
+		subState, ok := subStates[subAlloc.ID]
+		if !ok {
+			panic("sub-state not found")
+		}
+		_subStates = append(_subStates, ToEthState(subState))
+		if len(subState.Locked) > 0 {
+			_subSubStates := subStatesToArray(subState, subStates)
+			_subStates = append(_subStates, _subSubStates...)
+		}
+	}
+	return
 }

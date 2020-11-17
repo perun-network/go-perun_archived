@@ -32,8 +32,8 @@ import (
 // SimTimeout. SimTimeouts advance the clock of the simulated backend when Wait
 // is called.
 type SimAdjudicator struct {
-	ethchannel.Adjudicator
-	sb *SimulatedBackend
+	adjudicator ethchannel.Adjudicator
+	sb          *SimulatedBackend
 }
 
 // NewSimAdjudicator returns a new SimAdjudicator for the given backend. The
@@ -44,7 +44,7 @@ func NewSimAdjudicator(backend ethchannel.ContractBackend, contract common.Addre
 		panic("SimAdjudicator can only be created with a SimulatedBackend.")
 	}
 	return &SimAdjudicator{
-		Adjudicator: *ethchannel.NewAdjudicator(backend, contract, receiver, acc),
+		adjudicator: *ethchannel.NewAdjudicator(backend, contract, receiver, acc),
 		sb:          sb,
 	}
 }
@@ -52,7 +52,7 @@ func NewSimAdjudicator(backend ethchannel.ContractBackend, contract common.Addre
 // Register calls Register on the Adjudicator, returning a
 // *channel.RegisteredEvent with a SimTimeout or ElapsedTimeout.
 func (a *SimAdjudicator) Register(ctx context.Context, req channel.AdjudicatorReq) (*channel.RegisteredEvent, error) {
-	reg, err := a.Adjudicator.Register(ctx, req)
+	reg, err := a.adjudicator.Register(ctx, req)
 	if err != nil {
 		return reg, err
 	}
@@ -68,34 +68,42 @@ func (a *SimAdjudicator) Register(ctx context.Context, req channel.AdjudicatorRe
 	return reg, nil
 }
 
-// SubscribeRegistered returns a RegisteredEvent subscription on the simulated
-// blockchain backend.
-func (a *SimAdjudicator) SubscribeRegistered(ctx context.Context, params *channel.Params) (channel.RegisteredSubscription, error) {
-	sub, err := a.Adjudicator.SubscribeRegistered(ctx, params)
+// Subscribe returns an event subscription.
+func (a *SimAdjudicator) Subscribe(ctx context.Context, params *channel.Params) (channel.AdjudicatorSubscription, error) {
+	sub, err := a.adjudicator.Subscribe(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	return &SimRegisteredSub{
-		RegisteredSub: *(sub.(*ethchannel.RegisteredSub)),
-		sb:            a.sb,
+	return &SimEventSub{
+		AdjudicatorSubscription: sub,
+		sb:                      a.sb,
 	}, nil
 }
 
-// A SimRegisteredSub embeds an ethereum/channel.RegisteredSub, converting
+// SimEventSub embeds an ethereum/channel.AdjudicatorSub, converting
 // normal TimeTimeouts to SimTimeouts.
-type SimRegisteredSub struct {
-	ethchannel.RegisteredSub
+type SimEventSub struct {
+	channel.AdjudicatorSubscription
 	sb *SimulatedBackend
 }
 
 // Next calls Next on the underlying subscription, converting the TimeTimeout to
 // a SimTimeout.
-func (r *SimRegisteredSub) Next() *channel.RegisteredEvent {
-	reg := r.RegisteredSub.Next()
+func (r *SimEventSub) Next() channel.Event {
+	reg := r.AdjudicatorSubscription.Next()
 	if reg == nil {
 		return nil
 	}
-	reg.Timeout = block2SimTimeout(r.sb, reg.Timeout.(*ethchannel.BlockTimeout))
+	switch reg := reg.(type) {
+	case *channel.RegisteredEvent:
+		reg.EventBase.TimeoutV = block2SimTimeout(r.sb, reg.Timeout().(*ethchannel.BlockTimeout))
+	case *channel.ProgressedEvent:
+		reg.EventBase.TimeoutV = block2SimTimeout(r.sb, reg.Timeout().(*ethchannel.BlockTimeout))
+	case *channel.ConcludedEvent:
+		reg.EventBase.TimeoutV = block2SimTimeout(r.sb, reg.Timeout().(*ethchannel.BlockTimeout))
+	default:
+		panic("unknown event type")
+	}
 	return reg
 }
 
@@ -152,4 +160,19 @@ func (t *SimTimeout) timeLeft() int64 {
 // String returns the timeout in absolute seconds as a string.
 func (t *SimTimeout) String() string {
 	return fmt.Sprintf("<Sim timeout: %v>", t.Time)
+}
+
+// PendingNonceAt returns the next nonce.
+func (a *SimAdjudicator) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+	return a.adjudicator.PendingNonceAt(ctx, account)
+}
+
+// Progress progresses the channel on-chain.
+func (a *SimAdjudicator) Progress(ctx context.Context, req channel.ProgressReq) error {
+	return a.adjudicator.Progress(ctx, req)
+}
+
+// Withdraw withdraws the channel specified in the req.
+func (a *SimAdjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, subStates map[channel.ID]*channel.State) error {
+	return a.adjudicator.Withdraw(ctx, req, subStates)
 }

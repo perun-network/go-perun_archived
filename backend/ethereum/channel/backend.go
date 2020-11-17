@@ -52,7 +52,7 @@ func init() {
 		panic("decoding ABI json")
 	}
 	// Get the Params type.
-	chID, ok := adj.Methods["channelID"]
+	chID, ok := adj.Methods["calcChannelID"]
 	if !ok || len(chID.Inputs) != 1 {
 		panic("channelID not found")
 	}
@@ -179,6 +179,49 @@ func ToEthState(s *channel.State) adjudicator.ChannelState {
 		AppData:   appData.Bytes(),
 		IsFinal:   s.IsFinal,
 	}
+}
+
+// FromEthState converts a ChannelState to a channel.State struct.
+func FromEthState(app channel.App, s *adjudicator.ChannelState) channel.State {
+	locked := make([]channel.SubAlloc, len(s.Outcome.Locked))
+	for i, sub := range s.Outcome.Locked {
+		locked[i] = channel.SubAlloc{ID: sub.ID, Bals: sub.Balances}
+	}
+	alloc := channel.Allocation{
+		Assets:   fromEthAssets(s.Outcome.Assets),
+		Balances: s.Outcome.Balances,
+		Locked:   locked,
+	}
+	// Check allocation dimensions
+	if len(alloc.Assets) != len(alloc.Balances) || len(s.Outcome.Balances) != len(alloc.Balances) {
+		log.Panic("invalid allocation dimensions")
+	}
+
+	data, err := app.DecodeData(bytes.NewReader(s.AppData))
+	if err != nil {
+		log.Panicf("decoding app data: %v", err)
+	}
+
+	return channel.State{
+		ID:         s.ChannelID,
+		Version:    s.Version,
+		Allocation: alloc,
+		Data:       data,
+		IsFinal:    s.IsFinal,
+	}
+}
+
+func fromEthAssets(assets []common.Address) []channel.Asset {
+	_assets := make([]channel.Asset, len(assets))
+	for i, a := range assets {
+		_assets[i] = ethwallet.AsWalletAddr(a)
+	}
+	return _assets
+}
+
+func fromEthAppData(app channel.App, data []byte) channel.Data {
+	_data, _ := app.DecodeData(bytes.NewReader(data))
+	return _data
 }
 
 // EncodeParams encodes the parameters as with abi.encode() in the smart contracts.

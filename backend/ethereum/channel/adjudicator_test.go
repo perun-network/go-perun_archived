@@ -48,24 +48,30 @@ func signState(t *testing.T, accounts []*keystore.Account, params *channel.Param
 	}
 }
 
-func TestSubscribeRegistered(t *testing.T) {
+func TestSubscribe(t *testing.T) {
 	rng := pkgtest.Prng(t)
+
 	// create test setup
 	s := test.NewSetup(t, rng, 1)
+
 	// create valid state and params
 	params, state := channeltest.NewRandomParamsAndState(rng, channeltest.WithChallengeDuration(uint64(100*time.Second)), channeltest.WithParts(s.Parts...), channeltest.WithAssets((*ethchannel.Asset)(&s.Asset)), channeltest.WithIsFinal(false))
+
 	// Set up subscription
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	registered, err := s.Adjs[0].SubscribeRegistered(ctx, params)
+	sub, err := s.Adjs[0].Subscribe(ctx, params)
 	require.NoError(t, err, "Subscribing to valid params should not error")
+
 	// we need to properly fund the channel
 	txCtx, txCancel := context.WithTimeout(context.Background(), defaultTxTimeout)
 	defer txCancel()
+
 	// fund the contract
 	reqFund := channel.NewFundingReq(params, state, channel.Index(0), state.Balances)
 	require.NoError(t, s.Funders[0].Fund(txCtx, *reqFund), "funding should succeed")
-	// Now test the register function
+
+	// test subcription
 	tx := signState(t, s.Accs, params, state)
 	req := channel.AdjudicatorReq{
 		Params: params,
@@ -75,17 +81,20 @@ func TestSubscribeRegistered(t *testing.T) {
 	}
 	event, err := s.Adjs[0].Register(txCtx, req)
 	assert.NoError(t, err, "Registering state should succeed")
-	assert.Equal(t, event, registered.Next(), "Events should be equal")
-	assert.NoError(t, registered.Close(), "Closing event channel should not error")
-	assert.Nil(t, registered.Next(), "Next on closed channel should produce nil")
-	assert.NoError(t, registered.Err(), "Closing should produce no error")
-	// Setup a new subscription
-	registered2, err := s.Adjs[0].SubscribeRegistered(ctx, params)
+	assert.Equal(t, event, sub.Next(), "Events should be equal")
+	assert.NoError(t, sub.Close(), "Closing event channel should not error")
+	assert.Nil(t, sub.Next(), "Next on closed channel should produce nil")
+	assert.NoError(t, sub.Err(), "Closing should produce no error")
+
+	// test another subscription
+	sub2, err := s.Adjs[0].Subscribe(ctx, params)
 	assert.NoError(t, err, "registering two subscriptions should not fail")
-	assert.Equal(t, event, registered2.Next(), "Events should be equal")
-	assert.NoError(t, registered2.Close(), "Closing event channel should not error")
-	assert.Nil(t, registered2.Next(), "Next on closed channel should produce nil")
-	assert.NoError(t, registered2.Err(), "Closing should produce no error")
+	assert.Equal(t, event, sub2.Next(), "Events should be equal")
+	assert.NoError(t, sub2.Close(), "Closing event channel should not error")
+	assert.Nil(t, sub2.Next(), "Next on closed channel should produce nil")
+	assert.NoError(t, sub2.Err(), "Closing should produce no error")
+
+	//todo: extend test for event progressed
 }
 
 func TestValidateAdjudicator(t *testing.T) {
@@ -115,4 +124,8 @@ func TestValidateAdjudicator(t *testing.T) {
 		t.Logf("adjudicator address is %v", adjudicatorAddr)
 		require.NoError(t, ethchannel.ValidateAdjudicator(ctx, *s.CB, adjudicatorAddr))
 	})
+}
+
+func TestProgress(t *testing.T) {
+	//TODO: t.Error("to be implemented")
 }
