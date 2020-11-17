@@ -17,19 +17,34 @@ package test
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
+	"perun.network/go-perun/channel"
 )
 
 // Carol is a Responder. She accepts an incoming channel proposal.
 type Carol struct {
 	Responder
+	registered chan *channel.RegisteredEvent
 }
 
 // NewCarol creates a new Responder that executes the Carol protocol.
 func NewCarol(setup RoleSetup, t *testing.T) *Carol {
-	return &Carol{Responder: *NewResponder(setup, t, 3)}
+	return &Carol{
+		Responder:  *NewResponder(setup, t, 3),
+		registered: make(chan *channel.RegisteredEvent),
+	}
+}
+
+// HandleRegistered is the callback for RegisteredEvent.
+func (r *Carol) HandleRegistered(e *channel.RegisteredEvent) {
+	r.log.Infof("HandleRegistered: %v", e)
+	r.registered <- e
+}
+
+// HandleProgressed is the callback for ProgressedEvent.
+func (r *Carol) HandleProgressed(e *channel.ProgressedEvent) {
+	r.log.Infof("HandleProgressed: %v", e)
 }
 
 // Execute executes the Carol protocol.
@@ -43,10 +58,9 @@ func (r *Carol) exec(_cfg ExecConfig, ch *paymentChannel, propHandler *acceptNex
 	_, them := r.Idxs(cfg.Peers())
 
 	// start watcher
-	watcher := make(chan error)
 	go func() {
 		r.log.Info("Starting channel watcher.")
-		watcher <- ch.Watch()
+		ch.Watch(r)
 		r.log.Debug("Channel watcher returned.")
 	}()
 
@@ -60,14 +74,14 @@ func (r *Carol) exec(_cfg ExecConfig, ch *paymentChannel, propHandler *acceptNex
 	// 2nd stage - txs received
 	r.waitStage()
 
-	r.log.Debug("Waiting for watcher to return...")
-	select {
-	case err := <-watcher:
-		assert.NoError(err)
-	case <-time.After(r.timeout):
-		r.t.Error("expected watcher to return")
-		return
-	}
+	r.log.Debug("Waiting for registered event")
+	e := <-r.registered
+
+	r.log.Debug("Waiting until ready to conclude")
+	assert.NoError(e.Timeout().Wait(r.Ctx())) // wait until ready to conclude
+
+	r.log.Debug("Settle")
+	ch.settle() // conclude and withdraw
 
 	// 3rd stage - channel settled
 	r.waitStage()

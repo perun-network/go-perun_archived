@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"perun.network/go-perun/channel"
 	"perun.network/go-perun/client"
 )
 
@@ -43,6 +44,16 @@ func NewMallory(setup RoleSetup, t *testing.T) *Mallory {
 	return &Mallory{Proposer: *NewProposer(setup, t, 3)}
 }
 
+// HandleRegistered is the callback for RegisteredEvent.
+func (r *Mallory) HandleRegistered(e *channel.RegisteredEvent) {
+	r.log.Infof("HandleRegistered: %v", e)
+}
+
+// HandleProgressed is the callback for ProgressedEvent.
+func (r *Mallory) HandleProgressed(e *channel.ProgressedEvent) {
+	r.log.Infof("HandleProgressed: %v", e)
+}
+
 // Execute executes the Mallory protocol.
 func (r *Mallory) Execute(cfg ExecConfig) {
 	r.Proposer.Execute(cfg, r.exec)
@@ -54,6 +65,13 @@ func (r *Mallory) exec(_cfg ExecConfig, ch *paymentChannel) {
 	we, _ := r.Idxs(cfg.Peers())
 	// AdjudicatorReq for version 0
 	req0 := client.NewTestChannel(ch.Channel).AdjudicatorReq()
+
+	// start watcher
+	go func() {
+		r.log.Info("Starting channel watcher.")
+		ch.Watch(r)
+		r.log.Debug("Channel watcher returned.")
+	}()
 
 	// 1st stage - channel controller set up
 	r.waitStage()
@@ -78,15 +96,16 @@ func (r *Mallory) exec(_cfg ExecConfig, ch *paymentChannel) {
 	// within the challenge duration, Carol should refute.
 	subCtx, subCancel := context.WithTimeout(context.Background(), r.timeout+challengeDuration)
 	defer subCancel()
-	sub, err := r.setup.Adjudicator.SubscribeRegistered(subCtx, ch.Params())
+	sub, err := r.setup.Adjudicator.Subscribe(subCtx, ch.Params())
 	assert.NoError(err)
 
 	// 3rd stage - wait until Carol has refuted
 	r.waitStage()
 
-	assert.True(reg0.Timeout.IsElapsed(subCtx),
+	assert.True(reg0.Timeout().IsElapsed(subCtx),
 		"Carol's refutation should already have progressed past the timeout.")
-	reg := sub.Next() // should be event caused by Carol's refutation.
+	reg := sub.Next().(*channel.RegisteredEvent) // should be event caused by Mallory's refutation.
+	reg = sub.Next().(*channel.RegisteredEvent)  // should be event caused by Carol's refutation.
 	assert.NoError(sub.Close())
 	assert.NoError(sub.Err())
 	assert.NotNil(reg)
@@ -96,12 +115,12 @@ func (r *Mallory) exec(_cfg ExecConfig, ch *paymentChannel) {
 		waitCtx, waitCancel := context.WithTimeout(context.Background(), r.timeout+challengeDuration)
 		defer waitCancel()
 		// refutation increased the timeout.
-		assert.NoError(reg.Timeout.Wait(waitCtx))
+		assert.NoError(reg.Timeout().Wait(waitCtx))
 	}
 
 	wdCtx, wdCancel := context.WithTimeout(context.Background(), r.timeout)
 	defer wdCancel()
-	err = r.setup.Adjudicator.Withdraw(wdCtx, req0)
+	err = r.setup.Adjudicator.Withdraw(wdCtx, req0, nil)
 	assert.Error(err, "withdrawing should fail because Carol should have refuted.")
 
 	// settling current version should work

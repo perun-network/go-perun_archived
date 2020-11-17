@@ -86,7 +86,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 					Idx:    channel.Index(i),
 					Tx:     tx,
 				}
-				err := s.Adjs[i].Withdraw(ctx, req)
+				err := s.Adjs[i].Withdraw(ctx, req, nil)
 				assert.NoError(t, err, "Withdrawing should succeed")
 			}(i)
 		}
@@ -100,7 +100,7 @@ func withdrawMultipleConcurrentFinal(t *testing.T, numParts int, parallel bool) 
 				Idx:    channel.Index(i),
 				Tx:     tx,
 			}
-			err := s.Adjs[i].Withdraw(ctx, req)
+			err := s.Adjs[i].Withdraw(ctx, req, nil)
 			assert.NoError(t, err, "Withdrawing should succeed")
 		}
 	}
@@ -158,7 +158,7 @@ func testWithdrawZeroBalance(t *testing.T, n int) {
 		req.Idx = channel.Index(i)
 		// check that the nonce stays the same for zero balance withdrawals
 		diff, err := test.NonceDiff(s.Accs[i].Address(), adj, func() error {
-			return adj.Withdraw(context.Background(), req)
+			return adj.Withdraw(context.Background(), req, nil)
 		})
 		require.NoError(t, err)
 		if i%2 == 0 {
@@ -192,7 +192,7 @@ func TestWithdraw(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		req.Tx = signState(t, s.Accs, params, state)
-		err := s.Adjs[0].Withdraw(ctx, req)
+		err := s.Adjs[0].Withdraw(ctx, req, nil)
 
 		if shouldWork {
 			assert.NoError(t, err, "Withdrawing should work")
@@ -247,11 +247,11 @@ func TestWithdrawNonFinal(t *testing.T) {
 	reg, err := s.Adjs[0].Register(ctx, req)
 	require.NoError(t, err)
 	t.Log("Registered ", reg)
-	assert.False(reg.Timeout.IsElapsed(ctx),
+	assert.False(reg.Timeout().IsElapsed(ctx),
 		"registering non-final state should have non-elapsed timeout")
-	assert.NoError(reg.Timeout.Wait(ctx))
-	assert.True(reg.Timeout.IsElapsed(ctx), "timeout should have elapsed after Wait()")
-	assert.NoError(s.Adjs[0].Withdraw(ctx, req),
+	assert.NoError(reg.Timeout().Wait(ctx))
+	assert.True(reg.Timeout().IsElapsed(ctx), "timeout should have elapsed after Wait()")
+	assert.NoError(s.Adjs[0].Withdraw(ctx, req, nil),
 		"withdrawing should succeed after waiting for timeout")
 }
 

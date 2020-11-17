@@ -128,9 +128,8 @@ func TestStateMachine(t *testing.T) {
 
 	// Set Registered
 	reg := &channel.RegisteredEvent{
-		ID:      csm.ID(),
-		Version: statef.Version,
-		Timeout: new(channel.ElapsedTimeout),
+		EventBase: channel.MakeEventBase(csm.ID(), new(channel.ElapsedTimeout)),
+		Version:   statef.Version,
 	}
 	err = sm.SetRegistered(nil, reg)
 	require.NoError(err)

@@ -184,9 +184,9 @@ func (ch *paymentChannel) settleImpl(secondary bool) {
 
 	var err error
 	if secondary {
-		err = ch.SettleSecondary(ctx)
+		err = ch.Withdraw(ctx, nil, true)
 	} else {
-		err = ch.Settle(ctx)
+		err = ch.Withdraw(ctx, nil, false)
 	}
 	assert.NoError(ch.r.t, err)
 	ch.assertBals(ch.State())

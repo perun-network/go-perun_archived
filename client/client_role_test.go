@@ -103,18 +103,22 @@ func (f *logFunder) Fund(_ context.Context, req channel.FundingReq) error {
 func (a *logAdjudicator) Register(ctx context.Context, req channel.AdjudicatorReq) (*channel.RegisteredEvent, error) {
 	a.log.Infof("Register: %v", req)
 	return &channel.RegisteredEvent{
-		ID:      req.Params.ID(),
-		Version: req.Tx.Version,
-		Timeout: &channel.ElapsedTimeout{},
+		EventBase: channel.MakeEventBase(req.Params.ID(), &channel.ElapsedTimeout{}),
+		Version:   req.Tx.Version,
 	}, nil
 }
 
-func (a *logAdjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq) error {
+func (a *logAdjudicator) Progress(ctx context.Context, req channel.ProgressReq) error {
+	a.log.Infof("Progress: %v", req)
+	return nil
+}
+
+func (a *logAdjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, subStates map[channel.ID]*channel.State) error {
 	a.log.Infof("Withdraw: %v", req)
 	return nil
 }
 
-func (a *logAdjudicator) SubscribeRegistered(ctx context.Context, params *channel.Params) (channel.RegisteredSubscription, error) {
-	a.log.Infof("SubscribeRegistered: %v", params)
+func (a *logAdjudicator) Subscribe(ctx context.Context, params *channel.Params) (channel.AdjudicatorSubscription, error) {
+	a.log.Infof("Subscribe: %v", params)
 	return nil, nil
 }

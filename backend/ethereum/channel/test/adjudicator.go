@@ -57,9 +57,9 @@ func (a *SimAdjudicator) Register(ctx context.Context, req channel.AdjudicatorRe
 		return reg, err
 	}
 
-	switch t := reg.Timeout.(type) {
+	switch t := reg.Timeout().(type) {
 	case *ethchannel.BlockTimeout:
-		reg.Timeout = block2SimTimeout(a.sb, t)
+		reg.EventBase.TimeoutV = block2SimTimeout(a.sb, t)
 	case *channel.ElapsedTimeout: // leave as is
 	case nil: // leave as is
 	default:
