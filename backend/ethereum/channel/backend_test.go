@@ -55,12 +55,11 @@ func TestAdjudicator_PureFunctions(t *testing.T) {
 	})
 }
 
-func testCalcID(t *testing.T, rng *rand.Rand, contr *adjudicator.
-	Adjudicator, opts *bind.CallOpts) {
+func testCalcID(t *testing.T, rng *rand.Rand, contr *adjudicator.Adjudicator, opts *bind.CallOpts) {
 	for i := 0; i < 100; i++ {
 		params := test.NewRandomParams(rng)
 		ethParams := channel.ToEthParams(params)
-		ethId, err := contr.ChannelID(opts, ethParams)
+		ethId, err := contr.CalcChannelID(opts, ethParams)
 		require.NoError(t, err)
 		chID := channel.CalcID(params)
 
@@ -77,7 +76,7 @@ func testHashState(t *testing.T, rng *rand.Rand, contr *adjudicator.Adjudicator,
 	for i := 0; i < 100; i++ {
 		state := test.NewRandomParams(rng)
 		ethState := channel.ToEthParams(state)
-		ethId, err := contr.ChannelID(opts, ethState)
+		ethId, err := contr.CalcChannelID(opts, ethState)
 		require.NoError(t, err)
 		chID := channel.CalcID(state)
 
