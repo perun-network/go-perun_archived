@@ -17,8 +17,8 @@ package client_test
 import (
 	"context"
 	"math/big"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
@@ -33,6 +33,8 @@ import (
 	pkgtest "perun.network/go-perun/pkg/test"
 	"perun.network/go-perun/wire"
 )
+
+const twoPartyTestTimeout = 10 * time.Second
 
 func TestDisputeMalloryCarol(t *testing.T) {
 	log.Info("Starting dispute test")
@@ -76,17 +78,27 @@ func TestDisputeMalloryCarol(t *testing.T) {
 		TxAmounts:   [2]*big.Int{big.NewInt(20), big.NewInt(0)},
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	for i := 0; i < 2; i++ {
+	numClients := len(role)
+	done := make(chan struct{}, numClients)
+
+	// start clients
+	for i := 0; i < numClients; i++ {
 		go func(i int) {
-			defer wg.Done()
 			log.Infof("Starting %s.Execute", name[i])
 			role[i].Execute(execConfig)
+			done <- struct{}{} // signal client done
 		}(i)
 	}
 
-	wg.Wait()
+	// wait for clients to finish or timeout
+	timeout := time.After(twoPartyTestTimeout)
+	for clientsRunning := numClients; clientsRunning > 0; clientsRunning-- {
+		select {
+		case <-done: // wait for client done signal
+		case <-timeout:
+			t.Fatal("timeout")
+		}
+	}
 
 	// Assert correct final balances
 	netTransfer := big.NewInt(int64(execConfig.NumPayments[A])*execConfig.TxAmounts[A].Int64() -
