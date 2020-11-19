@@ -63,9 +63,6 @@ func TestDisputeMalloryCarol(t *testing.T) {
 
 	role[A] = clienttest.NewMallory(setup[A], t)
 	role[B] = clienttest.NewCarol(setup[B], t)
-	// enable stages synchronization
-	stages := role[A].EnableStages()
-	role[B].SetStages(stages)
 
 	execConfig := &clienttest.MalloryCarolExecConfig{
 		BaseExecConfig: clienttest.MakeBaseExecConfig(
@@ -78,27 +75,7 @@ func TestDisputeMalloryCarol(t *testing.T) {
 		TxAmounts:   [2]*big.Int{big.NewInt(20), big.NewInt(0)},
 	}
 
-	numClients := len(role)
-	done := make(chan struct{}, numClients)
-
-	// start clients
-	for i := 0; i < numClients; i++ {
-		go func(i int) {
-			log.Infof("Starting %s.Execute", name[i])
-			role[i].Execute(execConfig)
-			done <- struct{}{} // signal client done
-		}(i)
-	}
-
-	// wait for clients to finish or timeout
-	timeout := time.After(twoPartyTestTimeout)
-	for clientsRunning := numClients; clientsRunning > 0; clientsRunning-- {
-		select {
-		case <-done: // wait for client done signal
-		case <-timeout:
-			t.Fatal("timeout")
-		}
-	}
+	clienttest.ExecuteTwoPartyTest(t, role, execConfig)
 
 	// Assert correct final balances
 	netTransfer := big.NewInt(int64(execConfig.NumPayments[A])*execConfig.TxAmounts[A].Int64() -
