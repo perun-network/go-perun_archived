@@ -25,6 +25,7 @@ import (
 	"github.com/pkg/errors"
 
 	"perun.network/go-perun/backend/ethereum/bindings/adjudicator"
+	"perun.network/go-perun/backend/ethereum/bindings/app"
 	"perun.network/go-perun/backend/ethereum/bindings/assets"
 	"perun.network/go-perun/log"
 )
@@ -63,6 +64,15 @@ func DeployAdjudicator(ctx context.Context, backend ContractBackend, deployer ac
 	return deployContract(ctx, backend, deployer, "Adjudicator",
 		func(auth *bind.TransactOpts, cb ContractBackend) (common.Address, *types.Transaction, error) {
 			addr, tx, _, err := adjudicator.DeployAdjudicator(auth, backend)
+			return addr, tx, err
+		})
+}
+
+// DeployTrivialApp deploys a new TrivialApp contract.
+func DeployTrivialApp(ctx context.Context, backend ContractBackend, deployer accounts.Account) (common.Address, error) {
+	return deployContract(ctx, backend, deployer, "TrivialApp",
+		func(auth *bind.TransactOpts, cb ContractBackend) (common.Address, *types.Transaction, error) {
+			addr, tx, _, err := app.DeployTrivialApp(auth, backend)
 			return addr, tx, err
 		})
 }
