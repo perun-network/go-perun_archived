@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Copyright 2020 - See NOTICE file for copyright holders.
 #
@@ -17,15 +17,16 @@
 set -e
 
 ABIGEN=abigen
+SOLC=solc
 
 # Download solc.
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [ `uname` == "Linux" ]; then
     # GNU Linux
     wget -nc "https://github.com/ethereum/solidity/releases/download/v0.7.4/solc-static-linux"
     chmod +x solc-static-linux
     SOLC=./solc-static-linux
 
-elif [[ "$OSTYPE" == "darwin"* ]]; then
+elif [ `uname` == "Darwin" ]; then
     # Mac OSX
     curl -L "https://github.com/ethereum/solidity/releases/download/v0.7.4/solc-macos" -o solc-macos
     chmod +x solc-macos
@@ -33,12 +34,12 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 
 else
     # Unsupported
-    echo "$OSTYPE unsupported. Exiting."
+    echo "Unsupported operating system: `uname`. Exiting."
     exit 1
 fi
 
-echo -e "Exec 'git submodule update --init --recursive' once after cloning."
-echo -e "Ensure that the newest version of abigen is installed"
+echo "Exec 'git submodule update --init --recursive' once after cloning."
+echo "Ensure that the newest version of abigen is installed."
 
 # Generates optimized golang bindings and runtime binaries for sol contracts.
 # $1  solidity file path, relative to ../contracts/contracts/.
@@ -46,18 +47,32 @@ echo -e "Ensure that the newest version of abigen is installed"
 function generate() {
     FILE=$1; PKG=$2; CONTRACT=$FILE
     echo "generate package $PKG"
-    abigen --pkg $PKG --sol ../contracts/contracts/$FILE.sol --out $PKG/$FILE.go --solc $SOLC
+
+    mkdir -p $PKG
+
+    # generate abi
+    $ABIGEN --pkg $PKG --sol ../contracts/contracts/$FILE.sol --out $PKG/$FILE.go --solc $SOLC
+
+    # generate go bindings
     $SOLC --bin-runtime --optimize --allow-paths *, ../contracts/contracts/$FILE.sol --overwrite -o $PKG/
-    echo -e "package $PKG\n\n // ${CONTRACT}BinRuntime is the runtime part of the compiled bytecode used for deploying new contracts.\nvar ${CONTRACT}BinRuntime = \`$(<${PKG}/${CONTRACT}.bin-runtime)\`" > "$PKG/${CONTRACT}BinRuntime.go"
+
+    # generate binary runtime
+    BIN_RUNTIME=`cat ${PKG}/${CONTRACT}.bin-runtime`
+    printf "package $PKG\n\n// ${CONTRACT}BinRuntime is the runtime part of the compiled bytecode used for deploying new contracts.\nvar ${CONTRACT}BinRuntime = \"$BIN_RUNTIME\"\n" > "$PKG/${CONTRACT}BinRuntime.go"
 }
 
 # Adjudicator
-generate "Adjudicator" "adjudicator" "Adjudicator"
+generate "Adjudicator" "adjudicator"
 
-# PerunToken, AssetHolderETH and AssetHolderERC20
-generate "PerunToken" "assets"
-generate "AssetHolderETH" "assets"
-generate "AssetHolderERC20" "assets"
+# Asset holders
+generate "AssetHolder" "assetholder"
+generate "AssetHolderETH" "assetholdereth"
+generate "AssetHolderERC20" "assetholdererc20"
 
-$ABIGEN --version
-echo -e "Generated bindings"
+# Tokens
+generate "PerunToken" "peruntoken"
+
+# Applications
+generate "TrivialApp" "trivialapp"
+
+echo "Generated bindings"
