@@ -44,16 +44,6 @@ func NewMallory(setup RoleSetup, t *testing.T) *Mallory {
 	return &Mallory{Proposer: *NewProposer(setup, t, 3)}
 }
 
-// HandleRegistered is the callback for RegisteredEvent.
-func (r *Mallory) HandleRegistered(e *channel.RegisteredEvent) {
-	r.log.Infof("HandleRegistered: %v", e)
-}
-
-// HandleProgressed is the callback for ProgressedEvent.
-func (r *Mallory) HandleProgressed(e *channel.ProgressedEvent) {
-	r.log.Infof("HandleProgressed: %v", e)
-}
-
 // Execute executes the Mallory protocol.
 func (r *Mallory) Execute(cfg ExecConfig) {
 	r.Proposer.Execute(cfg, r.exec)
@@ -65,13 +55,6 @@ func (r *Mallory) exec(_cfg ExecConfig, ch *paymentChannel) {
 	we, _ := r.Idxs(cfg.Peers())
 	// AdjudicatorReq for version 0
 	req0 := client.NewTestChannel(ch.Channel).AdjudicatorReq()
-
-	// start watcher
-	go func() {
-		r.log.Info("Starting channel watcher.")
-		ch.Watch(r)
-		r.log.Debug("Channel watcher returned.")
-	}()
 
 	// 1st stage - channel controller set up
 	r.waitStage()
@@ -88,24 +71,21 @@ func (r *Mallory) exec(_cfg ExecConfig, ch *paymentChannel) {
 	regCtx, regCancel := context.WithTimeout(context.Background(), r.timeout)
 	defer regCancel()
 	r.log.Debug("Registering version 0 state.")
-	reg0, err := r.setup.Adjudicator.Register(regCtx, req0)
-	assert.NoError(err)
-	assert.NotNil(reg0)
-	r.log.Debugln("<Registered> ver 0: ", reg0)
+	assert.NoError(r.setup.Adjudicator.Register(regCtx, req0))
 
 	// within the challenge duration, Carol should refute.
 	subCtx, subCancel := context.WithTimeout(context.Background(), r.timeout+challengeDuration)
 	defer subCancel()
-	sub, err := r.setup.Adjudicator.Subscribe(subCtx, ch.Params())
+	sub, err := r.setup.Adjudicator.Subscribe(subCtx, ch.Params().ID())
 	assert.NoError(err)
 
 	// 3rd stage - wait until Carol has refuted
 	r.waitStage()
 
+	reg0 := sub.Next().(*channel.RegisteredEvent) // should be event caused by Mallory's refutation.
 	assert.True(reg0.Timeout().IsElapsed(subCtx),
 		"Carol's refutation should already have progressed past the timeout.")
-	reg := sub.Next().(*channel.RegisteredEvent) // should be event caused by Mallory's refutation.
-	reg = sub.Next().(*channel.RegisteredEvent)  // should be event caused by Carol's refutation.
+	reg := sub.Next().(*channel.RegisteredEvent) // should be event caused by Carol's refutation.
 	assert.NoError(sub.Close())
 	assert.NoError(sub.Err())
 	assert.NotNil(reg)

@@ -15,20 +15,27 @@ import (
 	"perun.network/go-perun/channel"
 )
 
-// Subscribe creates a new adjudicator event subscription.
-func (a *Adjudicator) Subscribe(ctx context.Context, params *channel.Params) (channel.AdjudicatorSubscription, error) {
+// Subscribe creates a new adjudicator event subscription for the given channel.
+// The subscription is cancelled when the context is cancelled.
+func (a *Adjudicator) Subscribe(ctx context.Context, c channel.ID) (channel.AdjudicatorSubscription, error) {
+	// // Apparently, go-ethereum 1.9.23's WatchLogs does not respect the context.
+	// // Therefore, we check for it ourselves.
+	// if ctx.Err() != nil {
+	// 	return nil, ctx.Err()
+	// }
+
 	watchOpts, err := a.NewWatchOpts(ctx)
 	if err != nil {
 		return nil, errors.WithMessage(err, "creating watchopts")
 	}
 
-	stored := make(chan *adjudicator.AdjudicatorStored)
-	storedSub, err := a.contract.WatchStored(watchOpts, stored, []channel.ID{params.ID()})
+	events := make(chan *adjudicator.AdjudicatorChannelUpdate)
+	eventSub, err := a.contract.WatchChannelUpdate(watchOpts, events, []channel.ID{c})
 	if err != nil {
-		return nil, errors.WithMessage(err, "creating subscription on event Stored")
+		return nil, errors.WithMessage(err, "creating event subscription")
 	}
 
-	adjudicatorSub := makeAdjudicatorSub(storedSub)
+	adjudicatorSub := makeAdjudicatorSub(eventSub)
 
 	go func() {
 		exit := func(err error) {
@@ -37,26 +44,30 @@ func (a *Adjudicator) Subscribe(ctx context.Context, params *channel.Params) (ch
 			runtime.Goexit()
 		}
 
-		e, err := a.getMostRecentEvent(ctx, params)
+		e, err := a.getMostRecentEvent(ctx, c)
 		if err != nil {
 			exit(err)
 		} else if e != nil {
 			adjudicatorSub.next <- e
 		}
 
-		defer storedSub.Unsubscribe()
+		defer eventSub.Unsubscribe()
 		for {
 			select {
-			case err := <-storedSub.Err():
+			case err := <-eventSub.Err():
 				exit(err)
 
-			case e := <-stored:
+			case e := <-events:
 				_e, err := a.convertEvent(ctx, e)
 				if err != nil {
 					exit(err)
 				}
 
 				adjudicatorSub.next <- _e
+
+			case <-ctx.Done():
+				exit(ctx.Err())
+
 			}
 		}
 	}()
@@ -64,15 +75,15 @@ func (a *Adjudicator) Subscribe(ctx context.Context, params *channel.Params) (ch
 	return adjudicatorSub, nil
 }
 
-func (a *Adjudicator) getMostRecentEvent(ctx context.Context, params *channel.Params) (channel.Event, error) {
+func (a *Adjudicator) getMostRecentEvent(ctx context.Context, c channel.ID) (channel.Event, error) {
 	// Filter old Events
 	filterOpts, err := a.NewFilterOpts(ctx)
 	if err != nil {
 		return nil, errors.WithMessage(err, "creating filter opts")
 	}
-	iter, err := a.contract.FilterStored(filterOpts, []channel.ID{params.ID()})
+	iter, err := a.contract.FilterChannelUpdate(filterOpts, []channel.ID{c})
 	if err != nil {
-		return nil, errors.WithMessage(err, "filtering stored events")
+		return nil, errors.WithMessage(err, "creating event filter")
 	}
 	defer iter.Close()
 
@@ -93,7 +104,7 @@ func (a *Adjudicator) getMostRecentEvent(ctx context.Context, params *channel.Pa
 
 // AdjudicatorSub implements the channel.AdjudicatorSubscription interface.
 type AdjudicatorSub struct {
-	sub  event.Subscription // Stored event subscription
+	sub  event.Subscription // Event subscription
 	next chan channel.Event // Registered event sink
 	err  chan error         // error from subscription
 	// done chan struct{}
@@ -119,7 +130,7 @@ func (sub AdjudicatorSub) Next() channel.Event {
 	return <-sub.next
 }
 
-func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.AdjudicatorStored) (channel.Event, error) {
+func (a *Adjudicator) convertEvent(ctx context.Context, e *adjudicator.AdjudicatorChannelUpdate) (channel.Event, error) {
 	base := channel.MakeEventBase(e.ChannelID, NewBlockTimeout(a.ContractInterface, e.Timeout))
 	switch e.Phase {
 	case phaseDispute:

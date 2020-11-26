@@ -54,9 +54,9 @@ type DummyAdjudicator struct {
 	t *testing.T
 }
 
-func (d *DummyAdjudicator) Register(context.Context, channel.AdjudicatorReq) (*channel.RegisteredEvent, error) {
+func (d *DummyAdjudicator) Register(context.Context, channel.AdjudicatorReq) error {
 	d.t.Error("DummyAdjudicator.Register called")
-	return nil, errors.New("DummyAdjudicator.Register called")
+	return errors.New("DummyAdjudicator.Register called")
 }
 
 func (d *DummyAdjudicator) Progress(context.Context, channel.ProgressReq) error {
@@ -69,9 +69,14 @@ func (d *DummyAdjudicator) Withdraw(context.Context, channel.AdjudicatorReq, map
 	return errors.New("DummyAdjudicator.Withdraw called")
 }
 
-func (d *DummyAdjudicator) Subscribe(context.Context, *channel.Params) (channel.AdjudicatorSubscription, error) {
+func (d *DummyAdjudicator) Subscribe(context.Context, channel.ID) (channel.AdjudicatorSubscription, error) {
 	d.t.Error("DummyAdjudicator.Subscribe called")
 	return nil, errors.New("DummyAdjudicator.Subscribe called")
+}
+
+func (d *DummyAdjudicator) DisputeState(ctx context.Context, c channel.ID) (channel.DisputeState, error) {
+	d.t.Error("DummyAdjudicator.DisputeState called")
+	return channel.DisputeState{}, errors.New("DummyAdjudicator.DisputeState called")
 }
 
 func TestClient_New_NilArgs(t *testing.T) {

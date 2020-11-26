@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/pkg/errors"
 
 	"perun.network/go-perun/wallet"
@@ -39,7 +40,7 @@ type (
 		// even an old state for the same channel. If registration was successful,
 		// it should return the timeout when withdrawal can be initiated with
 		// Withdraw.
-		Register(context.Context, AdjudicatorReq) (*RegisteredEvent, error)
+		Register(context.Context, AdjudicatorReq) error
 
 		// Withdraw should conclude and withdraw the registered state, so that the
 		// final outcome is set on the asset holders and funds are withdrawn
@@ -50,7 +51,18 @@ type (
 		Withdraw(context.Context, AdjudicatorReq, map[ID]*State) error
 
 		Progress(context.Context, ProgressReq) error
-		Subscribe(context.Context, *Params) (AdjudicatorSubscription, error)
+		Subscribe(context.Context, ID) (AdjudicatorSubscription, error)
+
+		DisputeState(context.Context, ID) (DisputeState, error)
+	}
+
+	DisputeState struct {
+		Timeout           Timeout
+		ChallengeDuration time.Duration
+		Version           uint64
+		HasApp            bool
+		Phase             Phase
+		StateHash         common.Hash
 	}
 
 	// ProgressReq constitues the request parameters for the Adjudicator's Progress function.
@@ -103,11 +115,10 @@ type (
 	// and the Adjudicator backend may run an optimized on-chain transaction
 	// protocol, possibly saving unnecessary double sending of transactions.
 	AdjudicatorReq struct {
-		Params    *Params
-		Acc       wallet.Account
-		Tx        Transaction
-		Idx       Index
-		Secondary bool
+		Params *Params
+		Acc    wallet.Account
+		Tx     Transaction
+		Idx    Index
 	}
 
 	// RegisteredEvent is the abstract event that signals a successful state

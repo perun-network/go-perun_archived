@@ -59,7 +59,7 @@ func testCalcID(t *testing.T, rng *rand.Rand, contr *adjudicator.Adjudicator, op
 	for i := 0; i < 100; i++ {
 		params := test.NewRandomParams(rng)
 		ethParams := channel.ToEthParams(params)
-		ethId, err := contr.CalcChannelID(opts, ethParams)
+		ethId, err := contr.ChannelID(opts, ethParams)
 		require.NoError(t, err)
 		chID := channel.CalcID(params)
 
@@ -76,7 +76,7 @@ func testHashState(t *testing.T, rng *rand.Rand, contr *adjudicator.Adjudicator,
 	for i := 0; i < 100; i++ {
 		state := test.NewRandomParams(rng)
 		ethState := channel.ToEthParams(state)
-		ethId, err := contr.CalcChannelID(opts, ethState)
+		ethId, err := contr.ChannelID(opts, ethState)
 		require.NoError(t, err)
 		chID := channel.CalcID(state)
 

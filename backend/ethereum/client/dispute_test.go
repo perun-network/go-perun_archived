@@ -18,7 +18,6 @@ import (
 	"context"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
@@ -33,8 +32,6 @@ import (
 	pkgtest "perun.network/go-perun/pkg/test"
 	"perun.network/go-perun/wire"
 )
-
-const twoPartyTestTimeout = 10 * time.Second
 
 func TestDisputeMalloryCarol(t *testing.T) {
 	log.Info("Starting dispute test")

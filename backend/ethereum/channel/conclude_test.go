@@ -58,29 +58,16 @@ func testConcludeFinal(t *testing.T, numParts int) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
 	defer cancel()
 	ct = pkgtest.NewConcurrent(t)
-	initiator := int(rng.Int31n(int32(numParts))) // pick a random initiator
 	for i := 0; i < numParts; i++ {
 		i := i
 		go ct.StageN("register", numParts, func(t pkgtest.ConcT) {
 			req := channel.AdjudicatorReq{
-				Params:    params,
-				Acc:       s.Accs[i],
-				Idx:       channel.Index(i),
-				Tx:        tx,
-				Secondary: (i != initiator),
+				Params: params,
+				Acc:    s.Accs[i],
+				Idx:    channel.Index(i),
+				Tx:     tx,
 			}
-			diff, err := test.NonceDiff(s.Accs[i].Address(), s.Adjs[i], func() error {
-				_, err := s.Adjs[i].Register(ctx, req)
-				return err
-			})
-			require.NoError(t, err, "Withdrawing should succeed")
-			if !req.Secondary {
-				// The Initiator must send a TX.
-				require.Equal(t, diff, 1)
-			} else {
-				// Everyone else must NOT send a TX.
-				require.Equal(t, diff, 0)
-			}
+			require.NoError(t, s.Adjs[i].Withdraw(ctx, req, nil), "Withdrawing should succeed")
 		})
 	}
 	ct.Wait("register")

@@ -17,6 +17,7 @@ package channel
 import (
 	"context"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -64,20 +65,23 @@ func NewAdjudicator(backend ContractBackend, contract common.Address, receiver c
 	}
 }
 
+func (a *Adjudicator) DisputeState(ctx context.Context, c channel.ID) (channel.DisputeState, error) {
+	d, err := a.contract.Disputes(NewCallOpts(ctx), c)
+	if err != nil {
+		return channel.DisputeState{}, errors.WithMessage(err, "getting dispute state")
+	}
+	return channel.DisputeState{
+		Timeout:           NewBlockTimeout(a.ContractInterface, d.Timeout),
+		ChallengeDuration: time.Duration(d.ChallengeDuration) * time.Second,
+		HasApp:            d.HasApp,
+		Phase:             channel.Phase(d.Phase),
+		StateHash:         d.StateHash,
+		Version:           d.Version,
+	}, nil
+}
+
 // Progress progresses a channel state on-chain.
 func (a *Adjudicator) Progress(ctx context.Context, req channel.ProgressReq) error {
-	return a.callProgress(ctx, req)
-}
-
-func (a *Adjudicator) callRegister(ctx context.Context, req channel.AdjudicatorReq) error {
-	return a.call(ctx, req, a.contract.Register)
-}
-
-func (a *Adjudicator) callRefute(ctx context.Context, req channel.AdjudicatorReq) error {
-	return a.call(ctx, req, a.contract.Refute)
-}
-
-func (a *Adjudicator) callProgress(ctx context.Context, req channel.ProgressReq) error {
 	ethNewState := ToEthState(req.NewState)
 	ethActorIndex := big.NewInt(int64(req.Idx))
 
@@ -90,6 +94,10 @@ func (a *Adjudicator) callProgress(ctx context.Context, req channel.ProgressReq)
 		return a.contract.Progress(opts, params, state, ethNewState, ethActorIndex, req.Sig)
 	}
 	return a.call(ctx, req.AdjudicatorReq, conclude)
+}
+
+func (a *Adjudicator) callRegister(ctx context.Context, req channel.AdjudicatorReq) error {
+	return a.call(ctx, req, a.contract.Register)
 }
 
 func (a *Adjudicator) callConclude(ctx context.Context, req channel.AdjudicatorReq, subStates map[channel.ID]*channel.State) error {

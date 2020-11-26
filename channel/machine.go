@@ -376,7 +376,7 @@ func (m *machine) SetRegistering() error {
 // gets stored in the machine to record the timeout and registered version.
 // This phase can be reached after the initial phases are done, i.e., when
 // there's at least one state with signatures.
-func (m *machine) SetRegistered(reg *RegisteredEvent) error {
+func (m *machine) SetRegistered() error {
 	if m.phase < Funding {
 		return m.phaseErrorf(m.selfTransition(), "can only register after init phases")
 	}

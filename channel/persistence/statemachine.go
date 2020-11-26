@@ -59,8 +59,8 @@ func (m StateMachine) SetRegistering(ctx context.Context) error {
 
 // SetRegistered calls SetRegistered on the channel.StateMachine and then
 // persists the changed phase.
-func (m StateMachine) SetRegistered(ctx context.Context, reg *channel.RegisteredEvent) error {
-	if err := m.StateMachine.SetRegistered(reg); err != nil {
+func (m StateMachine) SetRegistered(ctx context.Context) error {
+	if err := m.StateMachine.SetRegistered(); err != nil {
 		return err
 	}
 	return errors.WithMessage(m.pr.PhaseChanged(ctx, m.StateMachine), "Persister.PhaseChanged")

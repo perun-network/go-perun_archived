@@ -60,7 +60,7 @@ func TestSubscribe(t *testing.T) {
 	// Set up subscription
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sub, err := s.Adjs[0].Subscribe(ctx, params)
+	sub, err := s.Adjs[0].Subscribe(ctx, params.ID())
 	require.NoError(t, err, "Subscribing to valid params should not error")
 
 	// we need to properly fund the channel
@@ -79,15 +79,15 @@ func TestSubscribe(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	event, err := s.Adjs[0].Register(txCtx, req)
-	assert.NoError(t, err, "Registering state should succeed")
-	assert.Equal(t, event, sub.Next(), "Events should be equal")
+	assert.NoError(t, s.Adjs[0].Register(txCtx, req), "Registering state should succeed")
+	event := sub.Next()
+	assert.NotNil(t, event, "Should receive event")
 	assert.NoError(t, sub.Close(), "Closing event channel should not error")
 	assert.Nil(t, sub.Next(), "Next on closed channel should produce nil")
 	assert.NoError(t, sub.Err(), "Closing should produce no error")
 
 	// test another subscription
-	sub2, err := s.Adjs[0].Subscribe(ctx, params)
+	sub2, err := s.Adjs[0].Subscribe(ctx, params.ID())
 	assert.NoError(t, err, "registering two subscriptions should not fail")
 	assert.Equal(t, event, sub2.Next(), "Events should be equal")
 	assert.NoError(t, sub2.Close(), "Closing event channel should not error")

@@ -52,7 +52,7 @@ func init() {
 		panic("decoding ABI json")
 	}
 	// Get the Params type.
-	chID, ok := adj.Methods["calcChannelID"]
+	chID, ok := adj.Methods["channelID"]
 	if !ok || len(chID.Inputs) != 1 {
 		panic("channelID not found")
 	}

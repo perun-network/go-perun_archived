@@ -68,42 +68,53 @@ func registerMultipleConcurrent(t *testing.T, numParts int, parallel bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
 	defer cancel()
 	var wg sync.WaitGroup
-	startBarrier := make(chan struct{})
 	if parallel {
 		wg.Add(numParts)
 	}
 	for i := 0; i < numParts; i++ {
 		sleepDuration := time.Duration(rng.Int63n(10)+1) * time.Millisecond
 		// manipulate the state
-		state.Version = uint64(int(state.Version) + i)
-		tx := signState(t, s.Accs, params, state)
-		reg := func(i int, tx channel.Transaction) {
+		reg := func(i int) {
 			if parallel {
 				defer wg.Done()
-				<-startBarrier
 				time.Sleep(sleepDuration)
 			}
+
+			adj := s.Adjs[i]
+
+			sub, err := adj.Subscribe(ctx, params.ID())
+			assert.NoError(t, err)
+			defer sub.Close()
+
+			state := state.Clone()
+			state.Version = state.Version + uint64(i)
 			req := channel.AdjudicatorReq{
 				Params: params,
 				Acc:    s.Accs[i],
 				Idx:    channel.Index(i),
-				Tx:     tx,
+				Tx:     signState(t, s.Accs, params, state),
 			}
-			event, err := s.Adjs[i].Register(ctx, req)
-			assert.NoError(t, err, "Registering should succeed")
-			assert.NotEqual(t, event, &channel.RegisteredEvent{}, "registering should return valid event")
-			assert.False(t, event.Timeout().IsElapsed(ctx),
-				"registering non-final state should return unelapsed timeout")
-			t.Logf("Peer[%d] registered successful", i)
+
+			err = adj.Register(ctx, req)
+			dispute, errDispute := adj.DisputeState(ctx, req.Tx.ID)
+			require.NoError(t, errDispute)
+			if dispute.Version == req.Tx.Version {
+				assert.NoError(t, err, "Registering should succeed if local version greater than ledger version.")
+				event := sub.Next()
+				assert.NotEqual(t, event, &channel.RegisteredEvent{}, "registering should return valid event")
+				assert.False(t, event.Timeout().IsElapsed(ctx),
+					"registering non-final state should return unelapsed timeout")
+				t.Logf("Peer[%d] registered successful", i)
+			}
+
 		}
 		if parallel {
-			go reg(i, tx)
+			go reg(i)
 		} else {
-			reg(i, tx)
+			reg(i)
 		}
 	}
 	if parallel {
-		close(startBarrier)
 		wg.Wait()
 	}
 }
@@ -123,6 +134,9 @@ func TestRegister_FinalState(t *testing.T) {
 	// Now test the register function
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
 	defer cancel()
+	sub, err := s.Adjs[0].Subscribe(ctx, params.ID())
+	assert.NoError(t, err)
+	defer sub.Close()
 	tx := signState(t, s.Accs, params, state)
 	req := channel.AdjudicatorReq{
 		Params: params,
@@ -130,8 +144,8 @@ func TestRegister_FinalState(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	event, err := s.Adjs[0].Register(ctx, req)
-	assert.NoError(t, err, "Registering final state should succeed")
+	assert.NoError(t, s.Adjs[0].Register(ctx, req), "Registering final state should succeed")
+	event := sub.Next()
 	assert.NotEqual(t, event, &channel.RegisteredEvent{}, "registering should return valid event")
 	assert.True(t, event.Timeout().IsElapsed(ctx), "registering final state should return elapsed timeout")
 	t.Logf("Peer[%d] registered successful", 0)
@@ -151,8 +165,15 @@ func TestRegister_CancelledContext(t *testing.T) {
 	require.NoError(t, s.Funders[0].Fund(fundingCtx, *reqFund), "funding should succeed")
 	// Now test the register function
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTxTimeout)
-	// directly cancel timeout
+	defer cancel()
+
+	sub, err := s.Adjs[0].Subscribe(ctx, params.ID())
+	assert.NoError(t, err)
+	defer sub.Close()
+
+	// cancel context before calling register
 	cancel()
+
 	tx := signState(t, s.Accs, params, state)
 	req := channel.AdjudicatorReq{
 		Params: params,
@@ -160,7 +181,6 @@ func TestRegister_CancelledContext(t *testing.T) {
 		Idx:    channel.Index(0),
 		Tx:     tx,
 	}
-	event, err := s.Adjs[0].Register(ctx, req)
-	assert.Error(t, err, "Registering with canceled context should error")
-	assert.Nil(t, event, "should not produce valid event")
+	assert.Error(t, s.Adjs[0].Register(ctx, req), "Registering with canceled context should error")
+	assert.Nil(t, sub.Next(), "should not produce valid event")
 }

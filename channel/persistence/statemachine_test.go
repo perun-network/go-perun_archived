@@ -127,11 +127,7 @@ func TestStateMachine(t *testing.T) {
 	tpr.AssertEqual(csm)
 
 	// Set Registered
-	reg := &channel.RegisteredEvent{
-		EventBase: channel.MakeEventBase(csm.ID(), new(channel.ElapsedTimeout)),
-		Version:   statef.Version,
-	}
-	err = sm.SetRegistered(nil, reg)
+	err = sm.SetRegistered(nil)
 	require.NoError(err)
 	tpr.AssertEqual(csm)
 

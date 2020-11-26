@@ -63,6 +63,13 @@ func NewContractBackend(cf ContractInterface, tr Transactor) ContractBackend {
 	}
 }
 
+// NewCallOpts returns bind.CallOpts with the given context.
+func NewCallOpts(ctx context.Context) *bind.CallOpts {
+	return &bind.CallOpts{
+		Context: ctx,
+	}
+}
+
 // NewWatchOpts returns bind.WatchOpts with the field Start set to the current
 // block number and the ctx field set to the passed context.
 func (c *ContractBackend) NewWatchOpts(ctx context.Context) (*bind.WatchOpts, error) {
@@ -128,12 +135,12 @@ func (c *ContractBackend) NewTransactor(ctx context.Context, gasLimit uint64,
 func (c *ContractBackend) ConfirmTransaction(ctx context.Context, tx *types.Transaction, acc accounts.Account) error {
 	receipt, err := bind.WaitMined(ctx, c, tx)
 	if err != nil {
-		return errors.Wrap(err, "sending transaction")
+		return errors.Wrap(err, "confirming transaction")
 	}
 	if receipt.Status == types.ReceiptStatusFailed {
 		reason, err := errorReason(ctx, c, tx, receipt.BlockNumber, acc)
 		if err != nil {
-			log.Error("TX failed; error determining reason: ", err)
+			log.Error("TX failed: ", err)
 			// There is no way in ethereum to really decide this, but since we
 			// do it in the error case only, it should be fine.
 			// The limit of 1000 was determined by trial-and-error.
@@ -165,7 +172,7 @@ func errorReason(ctx context.Context, b *ContractBackend, tx *types.Transaction,
 		Value:    tx.Value(),
 		Data:     tx.Data(),
 	}
-	res, err := b.CallContract(ctx, msg, blockNum)
+	res, err := b.CallContract(ctx, msg, blockNum) //todo: in the currently used version of go-ethereum (1.9.23) this call returns an error with the revert message if the transaction reverts
 	if err != nil {
 		return "", errors.Wrap(err, "CallContract")
 	}

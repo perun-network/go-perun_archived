@@ -66,12 +66,9 @@ func (f *logFunder) Fund(_ context.Context, req channel.FundingReq) error {
 	return nil
 }
 
-func (a *logAdjudicator) Register(ctx context.Context, req channel.AdjudicatorReq) (*channel.RegisteredEvent, error) {
+func (a *logAdjudicator) Register(ctx context.Context, req channel.AdjudicatorReq) error {
 	a.log.Infof("Register: %v", req)
-	return &channel.RegisteredEvent{
-		EventBase: channel.MakeEventBase(req.Params.ID(), &channel.ElapsedTimeout{}),
-		Version:   req.Tx.Version,
-	}, nil
+	return nil
 }
 
 func (a *logAdjudicator) Progress(ctx context.Context, req channel.ProgressReq) error {
@@ -84,7 +81,12 @@ func (a *logAdjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorRe
 	return nil
 }
 
-func (a *logAdjudicator) Subscribe(ctx context.Context, params *channel.Params) (channel.AdjudicatorSubscription, error) {
-	a.log.Infof("Subscribe: %v", params)
+func (a *logAdjudicator) Subscribe(ctx context.Context, c channel.ID) (channel.AdjudicatorSubscription, error) {
+	a.log.Infof("Subscribe: %v", c)
 	return nil, nil
+}
+
+func (a *logAdjudicator) DisputeState(ctx context.Context, c channel.ID) (channel.DisputeState, error) {
+	a.log.Infof("DisputeState: %v", c)
+	return channel.DisputeState{}, nil
 }

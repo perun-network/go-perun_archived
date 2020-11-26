@@ -35,7 +35,7 @@ func (c *Channel) Watch(h WatchEventHandler) error {
 
 	// Subscribe to state changes
 	ctx := c.Ctx()
-	sub, err := c.adjudicator.Subscribe(ctx, c.Params())
+	sub, err := c.adjudicator.Subscribe(ctx, c.Params().ID())
 	if err != nil {
 		return errors.WithMessage(err, "subscribing to adjudicator state changes")
 	}
@@ -51,13 +51,13 @@ func (c *Channel) Watch(h WatchEventHandler) error {
 		switch e := e.(type) {
 		case *channel.RegisteredEvent:
 			// Assert backend version not greater than local version.
-			if e.Version > c.machine.State().Version {
+			if e.Version > c.State().Version {
 				// If the implementation works as intended, this should never happen.
 				log.Panicf("watch: registered: expected version less than or equal to %d, got version %d", c.machine.State().Version, e.Version)
 			}
 
 			// If local version greater than backend version, register local state.
-			if e.Version < c.machine.State().Version {
+			if e.Version < c.State().Version {
 				if err := c.Register(ctx); err != nil {
 					return errors.WithMessage(err, "registering")
 				}
@@ -66,8 +66,11 @@ func (c *Channel) Watch(h WatchEventHandler) error {
 			go h.HandleRegistered(e)
 
 		case *channel.ProgressedEvent:
-			//todo: lock machine!
-			c.machine.SetProgressed(e)
+			func() {
+				c.machMtx.Lock()
+				defer c.machMtx.Unlock()
+				c.machine.SetProgressed(e)
+			}()
 			go h.HandleProgressed(e)
 
 		}
@@ -126,7 +129,7 @@ func (c *Channel) ProgressBy(ctx context.Context, update func(*channel.State)) e
 }
 
 // Withdraw concludes a registered channel and withdraws the funds.
-func (c *Channel) Withdraw(ctx context.Context, subStates map[channel.ID]*channel.State, secondary bool) error {
+func (c *Channel) Withdraw(ctx context.Context, subStates map[channel.ID]*channel.State) error {
 	// Lock channel machine.
 	if !c.machMtx.TryLockCtx(ctx) {
 		return errors.WithMessage(ctx.Err(), "locking machine")
@@ -140,7 +143,6 @@ func (c *Channel) Withdraw(ctx context.Context, subStates map[channel.ID]*channe
 	switch {
 	case c.IsLedgerChannel():
 		req := c.machine.AdjudicatorReq()
-		req.Secondary = secondary
 		if err := c.adjudicator.Withdraw(ctx, req, subStates); err != nil {
 			return errors.WithMessage(err, "calling Withdraw")
 		}
@@ -172,14 +174,9 @@ func (c *Channel) register(ctx context.Context) error {
 		return err
 	}
 
-	reg, err := c.adjudicator.Register(ctx, c.machine.AdjudicatorReq())
-	if err != nil {
+	if err := c.adjudicator.Register(ctx, c.machine.AdjudicatorReq()); err != nil {
 		return errors.WithMessage(err, "calling Register")
 	}
-	if ver := c.machine.State().Version; reg.Version != ver {
-		return errors.Errorf(
-			"unexpected version %d registered, expected %d", reg.Version, ver)
-	}
 
-	return c.machine.SetRegistered(ctx, reg)
+	return c.machine.SetRegistered(ctx)
 }

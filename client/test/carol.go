@@ -60,7 +60,7 @@ func (r *Carol) exec(_cfg ExecConfig, ch *paymentChannel, propHandler *acceptNex
 	// start watcher
 	go func() {
 		r.log.Info("Starting channel watcher.")
-		ch.Watch(r)
+		assert.NoError(ch.Watch(r))
 		r.log.Debug("Channel watcher returned.")
 	}()
 

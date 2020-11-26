@@ -51,26 +51,16 @@ func NewSimAdjudicator(backend ethchannel.ContractBackend, contract common.Addre
 
 // Register calls Register on the Adjudicator, returning a
 // *channel.RegisteredEvent with a SimTimeout or ElapsedTimeout.
-func (a *SimAdjudicator) Register(ctx context.Context, req channel.AdjudicatorReq) (*channel.RegisteredEvent, error) {
-	reg, err := a.adjudicator.Register(ctx, req)
-	if err != nil {
-		return reg, err
+func (a *SimAdjudicator) Register(ctx context.Context, req channel.AdjudicatorReq) error {
+	if err := a.adjudicator.Register(ctx, req); err != nil {
+		return err
 	}
-
-	switch t := reg.Timeout().(type) {
-	case *ethchannel.BlockTimeout:
-		reg.EventBase.TimeoutV = block2SimTimeout(a.sb, t)
-	case *channel.ElapsedTimeout: // leave as is
-	case nil: // leave as is
-	default:
-		panic("invalid timeout type from embedded Adjudicator")
-	}
-	return reg, nil
+	return nil
 }
 
 // Subscribe returns an event subscription.
-func (a *SimAdjudicator) Subscribe(ctx context.Context, params *channel.Params) (channel.AdjudicatorSubscription, error) {
-	sub, err := a.adjudicator.Subscribe(ctx, params)
+func (a *SimAdjudicator) Subscribe(ctx context.Context, c channel.ID) (channel.AdjudicatorSubscription, error) {
+	sub, err := a.adjudicator.Subscribe(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -175,4 +165,14 @@ func (a *SimAdjudicator) Progress(ctx context.Context, req channel.ProgressReq) 
 // Withdraw withdraws the channel specified in the req.
 func (a *SimAdjudicator) Withdraw(ctx context.Context, req channel.AdjudicatorReq, subStates map[channel.ID]*channel.State) error {
 	return a.adjudicator.Withdraw(ctx, req, subStates)
+}
+
+// DisputeState returns the dispute state for the given channel.
+func (a *SimAdjudicator) DisputeState(ctx context.Context, c channel.ID) (channel.DisputeState, error) {
+	d, err := a.adjudicator.DisputeState(ctx, c)
+	if err != nil {
+		return channel.DisputeState{}, err
+	}
+	d.Timeout = block2SimTimeout(a.sb, d.Timeout.(*ethchannel.BlockTimeout))
+	return d, nil
 }

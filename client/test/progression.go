@@ -84,7 +84,7 @@ func (r *Paul) exec(_cfg ExecConfig, ch *paymentChannel) {
 	// start watcher
 	go func() {
 		r.log.Info("Starting channel watcher.")
-		ch.Watch(r)
+		assert.NoError(ch.Watch(r))
 		r.log.Debug("Channel watcher returned.")
 	}()
 
@@ -116,7 +116,7 @@ func (r *Paul) exec(_cfg ExecConfig, ch *paymentChannel) {
 	assert.NoError(progEvent.Timeout().Wait(ctx), "waiting for progression timeout")
 
 	// withdraw
-	assert.NoError(ch.Withdraw(ctx, nil, false))
+	assert.NoError(ch.Withdraw(ctx, nil))
 }
 
 // ----------------- BEGIN PAULA -----------------
@@ -148,7 +148,7 @@ func (r *Paula) exec(_cfg ExecConfig, ch *paymentChannel, _ *acceptNextPropHandl
 	// start watcher
 	go func() {
 		r.log.Info("Starting channel watcher.")
-		ch.Watch(r)
+		assert.NoError(ch.Watch(r))
 		r.log.Debug("Channel watcher returned.")
 	}()
 
@@ -179,5 +179,5 @@ func (r *Paula) exec(_cfg ExecConfig, ch *paymentChannel, _ *acceptNextPropHandl
 	assert.NoError(progEvent.Timeout().Wait(ctx), "waiting for progression timeout")
 
 	// withdraw
-	assert.NoError(ch.Withdraw(ctx, nil, false))
+	assert.NoError(ch.Withdraw(ctx, nil))
 }

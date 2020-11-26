@@ -171,24 +171,10 @@ func (ch *paymentChannel) recvFinal() {
 }
 
 func (ch *paymentChannel) settle() {
-	ch.settleImpl(false)
-}
-
-func (ch *paymentChannel) settleSecondary() {
-	ch.settleImpl(true)
-}
-
-func (ch *paymentChannel) settleImpl(secondary bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), ch.r.timeout)
 	defer cancel()
 
-	var err error
-	if secondary {
-		err = ch.Withdraw(ctx, nil, true)
-	} else {
-		err = ch.Withdraw(ctx, nil, false)
-	}
-	assert.NoError(ch.r.t, err)
+	assert.NoError(ch.r.t, ch.Withdraw(ctx, nil))
 	ch.assertBals(ch.State())
 
 	if ch.IsSubChannel() {

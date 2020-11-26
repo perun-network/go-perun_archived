@@ -59,7 +59,7 @@ func (r *Bob) exec(_cfg ExecConfig, ch *paymentChannel, propHandler *acceptNextP
 	ch.sendFinal()
 
 	// 4th Settle channel
-	ch.settleSecondary()
+	ch.settle()
 
 	// 4th final stage
 	r.waitStage()
