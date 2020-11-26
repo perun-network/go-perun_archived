@@ -129,7 +129,13 @@ func (c *Channel) ProgressBy(ctx context.Context, update func(*channel.State)) e
 }
 
 // Withdraw concludes a registered channel and withdraws the funds.
-func (c *Channel) Withdraw(ctx context.Context, subStates map[channel.ID]*channel.State) error {
+func (c *Channel) Withdraw(ctx context.Context) error {
+	return c.WithdrawWithSubchannels(ctx, nil)
+}
+
+// WithdrawWithSubchannels concludes a registered channel with registered
+// subchannels and withdraws the funds.
+func (c *Channel) WithdrawWithSubchannels(ctx context.Context, subStates map[channel.ID]*channel.State) error {
 	// Lock channel machine.
 	if !c.machMtx.TryLockCtx(ctx) {
 		return errors.WithMessage(ctx.Err(), "locking machine")

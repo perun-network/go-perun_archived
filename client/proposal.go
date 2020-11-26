@@ -497,7 +497,7 @@ func (c *Client) fundLedgerChannel(ctx context.Context, ch *Channel, agreement c
 			agreement,
 		)); channel.IsFundingTimeoutError(err) {
 		ch.Log().Warnf("Peers timed out funding channel(%v); settling...", err)
-		serr := ch.Withdraw(ctx, nil)
+		serr := ch.Withdraw(ctx)
 		return errors.WithMessagef(err,
 			"peers timed out funding (subsequent settlement error: %v)", serr)
 	} else if err != nil { // other runtime error

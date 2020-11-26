@@ -174,7 +174,7 @@ func (ch *paymentChannel) settle() {
 	ctx, cancel := context.WithTimeout(context.Background(), ch.r.timeout)
 	defer cancel()
 
-	assert.NoError(ch.r.t, ch.Withdraw(ctx, nil))
+	assert.NoError(ch.r.t, ch.Withdraw(ctx))
 	ch.assertBals(ch.State())
 
 	if ch.IsSubChannel() {
