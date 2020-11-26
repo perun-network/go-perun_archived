@@ -36,15 +36,13 @@ func NewCarol(setup RoleSetup, t *testing.T) *Carol {
 	}
 }
 
-// HandleRegistered is the callback for RegisteredEvent.
-func (r *Carol) HandleRegistered(e *channel.RegisteredEvent) {
-	r.log.Infof("HandleRegistered: %v", e)
-	r.registered <- e
-}
-
-// HandleProgressed is the callback for ProgressedEvent.
-func (r *Carol) HandleProgressed(e *channel.ProgressedEvent) {
-	r.log.Infof("HandleProgressed: %v", e)
+// HandleAdjudicatorEvent is the callback for adjudicator event handling.
+func (r *Carol) HandleAdjudicatorEvent(e channel.Event) {
+	r.log.Infof("HandleAdjudicatorEvent: %v", e)
+	switch e := e.(type) {
+	case *channel.RegisteredEvent:
+		r.registered <- e
+	}
 }
 
 // Execute executes the Carol protocol.

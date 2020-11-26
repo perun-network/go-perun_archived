@@ -43,16 +43,15 @@ func makeWatcher(t *testing.T) Watcher {
 	}
 }
 
-// HandleRegistered is the callback for RegisteredEvent.
-func (w *Watcher) HandleRegistered(e *channel.RegisteredEvent) {
-	w.t.Logf("HandleRegistered: %v", e)
-	w.registered <- e
-}
-
-// HandleProgressed is the callback for ProgressedEvent.
-func (w *Watcher) HandleProgressed(e *channel.ProgressedEvent) {
-	w.t.Logf("HandleProgressed: %v", e)
-	w.progressed <- e
+// HandleAdjudicatorEvent is the callback for adjudicator event handling.
+func (w *Watcher) HandleAdjudicatorEvent(e channel.Event) {
+	w.t.Logf("HandleAdjudicatorEvent: %v", e)
+	switch e := e.(type) {
+	case *channel.RegisteredEvent:
+		w.registered <- e
+	case *channel.ProgressedEvent:
+		w.progressed <- e
+	}
 }
 
 // ----------------- BEGIN PAUL -----------------

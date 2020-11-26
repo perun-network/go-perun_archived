@@ -22,14 +22,13 @@ import (
 	"perun.network/go-perun/channel"
 )
 
-// WatchEventHandler represents an interface for handling adjudicator events.
-type WatchEventHandler interface {
-	HandleRegistered(*channel.RegisteredEvent)
-	HandleProgressed(*channel.ProgressedEvent)
+// AdjudicatorEventHandler represents an interface for handling adjudicator events.
+type AdjudicatorEventHandler interface {
+	HandleAdjudicatorEvent(channel.Event)
 }
 
 // Watch watches the adjudicator for channel events and responds accordingly.
-func (c *Channel) Watch(h WatchEventHandler) error {
+func (c *Channel) Watch(h AdjudicatorEventHandler) error {
 	log := c.Log().WithField("proc", "watcher")
 	defer log.Info("Watcher returned.")
 
@@ -63,7 +62,7 @@ func (c *Channel) Watch(h WatchEventHandler) error {
 				}
 			}
 
-			go h.HandleRegistered(e)
+			go h.HandleAdjudicatorEvent(e)
 
 		case *channel.ProgressedEvent:
 			func() {
@@ -71,7 +70,7 @@ func (c *Channel) Watch(h WatchEventHandler) error {
 				defer c.machMtx.Unlock()
 				c.machine.SetProgressed(e)
 			}()
-			go h.HandleProgressed(e)
+			go h.HandleAdjudicatorEvent(e)
 
 		}
 	}
