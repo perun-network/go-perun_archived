@@ -50,7 +50,7 @@ func (c *Channel) fundSubChannel(ctx context.Context, id channel.ID, alloc *chan
 	})
 }
 
-func (c *Channel) subChannelSettleOptimistic(ctx context.Context) error {
+func (c *Channel) withdrawIntoParent(ctx context.Context) error {
 	if !c.IsSubChannel() {
 		c.Log().Panic("not a sub-channel")
 	}

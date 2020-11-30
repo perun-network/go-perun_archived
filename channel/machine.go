@@ -405,9 +405,9 @@ func (m *machine) SetProgressed(e *ProgressedEvent) error {
 
 // SetWithdrawing sets the state machine to the Withdrawing phase. The current
 // state was registered on-chain and funds withdrawal is in progress.
-// This phase can only be reached from the Registered or Withdrawing phase.
+// This phase can only be reached from phase Acting, Registered, or Withdrawing.
 func (m *machine) SetWithdrawing() error {
-	if !inPhase(m.phase, []Phase{Registered, Withdrawing}) {
+	if !inPhase(m.phase, []Phase{Acting, Registered, Withdrawing}) {
 		return m.phaseErrorf(m.selfTransition(), "can only withdraw after registering")
 	}
 	m.setPhase(Withdrawing)
