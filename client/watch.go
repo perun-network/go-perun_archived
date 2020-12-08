@@ -16,11 +16,14 @@ package client
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 
 	"perun.network/go-perun/channel"
 )
+
+const waitEventDuration = 1 * time.Second
 
 // Watch starts the channel watcher routine. It subscribes to RegisteredEvents
 // on the adjudicator. If an event is registered, it is handled by making sure
@@ -82,7 +85,7 @@ func (c *Channel) handleRegisteredEvent(ctx context.Context, reg *channel.Regist
 		return nil
 	}
 
-	if err := c.machine.SetRegistered(ctx, reg); err != nil {
+	if err := c.machine.SetRegistered(ctx); err != nil {
 		return errors.WithMessage(err, "setting machine to Registered phase")
 	}
 
@@ -142,10 +145,20 @@ func (c *Channel) settle(ctx context.Context, secondary bool) error {
 	if c.IsSubChannel() {
 		return c.subChannelSettleOptimistic(ctx)
 	}
-	ver, reg := c.machine.State().Version, c.machine.Registered()
+
+	reg, err := func() (channel.AdjudicatorEvent, error) {
+		ctx, cancel := context.WithTimeout(ctx, waitEventDuration)
+		defer cancel()
+		return c.registeredState(ctx)
+	}()
+	if err != nil {
+		c.Log().Warnf("getting remote state: %v", err)
+	}
+
+	ver := c.machine.State().Version
 	// If the machine is at least in phase Registered, reg shouldn't be nil. We
 	// still catch this case to be future proof.
-	if c.machine.Phase() < channel.Registered || reg == nil || reg.Version() < ver {
+	if !c.machine.IsRegistered() || err != nil || reg.Version() < ver {
 		if reg != nil && reg.Version() < ver {
 			c.Log().Warnf("Lower version %d (< %d) registered, refuting...", reg.Version(), ver)
 		}
@@ -155,7 +168,12 @@ func (c *Channel) settle(ctx context.Context, secondary bool) error {
 		c.Log().Info("Channel state registered.")
 	}
 
-	if reg = c.machine.Registered(); !reg.Timeout().IsElapsed(ctx) {
+	reg, err = c.registeredState(ctx)
+	if err != nil {
+		return errors.WithMessage(err, "getting remote state after registering")
+	}
+
+	if !reg.Timeout().IsElapsed(ctx) {
 		if c.machine.State().IsFinal {
 			c.Log().Warnf(
 				"Unexpected withdrawal timeout while settling final state. Waiting until %v.",
@@ -177,6 +195,29 @@ func (c *Channel) settle(ctx context.Context, secondary bool) error {
 	return nil
 }
 
+func (c *Channel) registeredState(ctx context.Context) (channel.AdjudicatorEvent, error) {
+	sub, err := c.adjudicator.Subscribe(ctx, c.Params())
+	if err != nil {
+		return nil, errors.WithMessage(err, "creating event subscription")
+	}
+	defer sub.Close()
+
+	ec := make(chan channel.AdjudicatorEvent)
+	go func() {
+		ec <- sub.Next()
+	}()
+
+	var e channel.AdjudicatorEvent
+	select {
+	case e = <-ec:
+		sub.Close()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	return e, sub.Err()
+}
+
 // register calls Register on the adjudicator with the current channel state and
 // progresses the machine phases. When successful, the resulting RegisteredEvent
 // is saved to the phase machine.
@@ -196,7 +237,7 @@ func (c *Channel) register(ctx context.Context) error {
 			"unexpected version %d registered, expected %d", reg.Version(), ver)
 	}
 
-	return c.machine.SetRegistered(ctx, reg)
+	return c.machine.SetRegistered(ctx)
 }
 
 // withdraw calls Withdraw on the adjudicator with the current channel state and

@@ -64,6 +64,8 @@ const (
 	Final
 	Registering
 	Registered
+	Progressing
+	Progressed
 	Withdrawing
 	Withdrawn
 )
@@ -78,6 +80,8 @@ func (p Phase) String() string {
 		"Final",
 		"Registering",
 		"Registered",
+		"Progressing",
+		"Progressed",
 		"Withdrawing",
 		"Withdrawn",
 	}[p]
@@ -97,7 +101,7 @@ func (t PhaseTransition) String() string {
 	return fmt.Sprintf("%v->%v", t.From, t.To)
 }
 
-var signingPhases = []Phase{InitSigning, Signing}
+var signingPhases = []Phase{InitSigning, Signing, Progressing}
 
 // A machine is the channel pushdown automaton that handles phase transitions.
 // It checks for correct signatures and valid phase transitions.
@@ -115,9 +119,6 @@ type machine struct {
 	stagingTX Transaction
 	currentTX Transaction
 	prevTXs   []Transaction
-
-	// currently registered event, if any
-	registered *RegisteredEvent
 
 	// logger embedding
 	log.Embedding
@@ -332,13 +333,17 @@ func (m *machine) enableStaged(expected PhaseTransition) error {
 	if err := m.expect(expected); err != nil {
 		return errors.WithMessage(err, "no staging phase")
 	}
-	if (expected.To == Final) != m.stagingTX.State.IsFinal {
-		return m.phaseErrorf(expected, "State.IsFinal and target phase don't match")
-	}
 
-	for i, sig := range m.stagingTX.Sigs {
-		if sig == nil {
-			return m.phaseErrorf(expected, "signature %d missing from staging TX", i)
+	if m.phase != Progressing {
+		// Assert that we transition to phase Final iff state.IsFinal.
+		if (expected.To == Final) != m.stagingTX.State.IsFinal {
+			return m.phaseErrorf(expected, "State.IsFinal and target phase don't match")
+		}
+		// Assert that all signatures are present.
+		for i, sig := range m.stagingTX.Sigs {
+			if sig == nil {
+				return m.phaseErrorf(expected, "signature %d missing from staging TX", i)
+			}
 		}
 	}
 
@@ -373,22 +378,29 @@ func (m *machine) SetRegistering() error {
 // gets stored in the machine to record the timeout and registered version.
 // This phase can be reached after the initial phases are done, i.e., when
 // there's at least one state with signatures.
-func (m *machine) SetRegistered(reg *RegisteredEvent) error {
+func (m *machine) SetRegistered() error {
 	if m.phase < Funding {
 		return m.phaseErrorf(m.selfTransition(), "can only register after init phases")
 	}
 
-	if m.registered == nil || reg.Version() > m.registered.Version() {
-		m.registered = reg
-	}
 	m.setPhase(Registered)
 	return nil
 }
 
-// Registered returns the currently registered event (timeout and version), if
-// any, or nil.
-func (m *machine) Registered() *RegisteredEvent {
-	return m.registered
+func (m *machine) SetProgressing(state *State) error {
+	if !inPhase(m.phase, []Phase{Registered, Progressed}) {
+		return m.phaseErrorf(m.selfTransition(), "can only progress when registered or progressed")
+	}
+	m.setStaging(Progressing, state)
+	return nil
+}
+
+func (m *machine) SetProgressed(e *ProgressedEvent) error {
+	m.setStaging(Progressing, e.State)
+	if err := m.enableStaged(PhaseTransition{m.phase, Progressed}); err != nil {
+		return errors.WithMessage(err, "enabling staged transaction")
+	}
+	return nil
 }
 
 // SetWithdrawing sets the state machine to the Withdrawing phase. The current
@@ -435,6 +447,9 @@ var validPhaseTransitions = map[PhaseTransition]struct{}{
 	{Final, Registered}:       {},
 	{Registering, Registered}: {},
 	{Registered, Withdrawing}: {},
+	{Registered, Progressed}:  {},
+	{Progressing, Progressed}: {},
+	{Progressed, Withdrawing}: {},
 	{Withdrawing, Withdrawn}:  {},
 }
 
@@ -517,4 +532,8 @@ func (m *machine) Clone() *machine {
 		prevTXs:   prevTXs,
 		Embedding: m.Embedding,
 	}
+}
+
+func (m *machine) IsRegistered() bool {
+	return m.phase >= Registered
 }
