@@ -88,12 +88,6 @@ func (p *Relay) Subscribe(c Consumer, predicate Predicate) error {
 		return errors.New("producer closed")
 	}
 
-	for _, rec := range p.consumers {
-		if rec.consumer == c {
-			log.Panic("duplicate subscription")
-		}
-	}
-
 	// Execute the callback asynchronously to prevent deadlock if it executes
 	// immediately. This can only happen if the consumer is closed while
 	// subscribing.

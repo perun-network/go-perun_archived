@@ -123,13 +123,6 @@ func TestProducer_Subscribe(t *testing.T) {
 		assert.Error(t, p.Subscribe(NewReceiver(), fn))
 	})
 
-	t.Run("duplicate", func(t *testing.T) {
-		p := NewRelay()
-		r := NewReceiver()
-		assert.NoError(t, p.Subscribe(r, fn))
-		assert.Panics(t, func() { p.Subscribe(r, fn) })
-	})
-
 	t.Run("closed consumer", func(t *testing.T) {
 		p := NewRelay()
 		r := NewReceiver()

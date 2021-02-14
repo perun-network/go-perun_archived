@@ -46,8 +46,6 @@ func (r *Alice) Execute(cfg ExecConfig) {
 func (r *Alice) exec(_cfg ExecConfig, ch *paymentChannel) {
 	cfg := _cfg.(*AliceBobExecConfig)
 	we, them := r.Idxs(cfg.Peers())
-	// 1st stage - channel controller set up
-	r.waitStage()
 
 	// 1st Alice receives some updates from Bob
 	for i := 0; i < cfg.NumPayments[them]; i++ {

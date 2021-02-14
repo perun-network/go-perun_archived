@@ -139,6 +139,7 @@ func (c *Client) ProposeChannel(ctx context.Context, prop ChannelProposal) (*Cha
 		return nil, errors.WithMessage(err, "invalid channel proposal")
 	}
 
+	c.enableUpdateReqCache(ctx)
 	// 2. send proposal, wait for response, create channel object
 	ch, err := c.proposeTwoPartyChannel(ctx, prop)
 	if err != nil {
@@ -146,7 +147,9 @@ func (c *Client) ProposeChannel(ctx context.Context, prop ChannelProposal) (*Cha
 	}
 
 	// 3. fund
-	return ch, c.fundChannel(ctx, ch, prop)
+	fundingErr := c.fundChannel(ctx, ch, prop)
+	c.subscribeUpdateReq(ch.ID())
+	return ch, fundingErr
 }
 
 // handleChannelProposal implements the receiving side of the (currently)
@@ -175,11 +178,15 @@ func (c *Client) handleChannelProposalAcc(
 		return ch, errors.WithMessage(err, "validating channel proposal acceptance")
 	}
 
+	c.enableUpdateReqCache(ctx)
+
 	if ch, err = c.acceptChannelProposal(ctx, prop, p, acc); err != nil {
 		return ch, errors.WithMessage(err, "accept channel proposal")
 	}
 
-	return ch, c.fundChannel(ctx, ch, prop)
+	fundingErr := c.fundChannel(ctx, ch, prop)
+	c.subscribeUpdateReq(ch.ID())
+	return ch, fundingErr
 }
 
 func (c *Client) acceptChannelProposal(
@@ -539,6 +546,25 @@ func (c *Client) fundSubchannel(ctx context.Context, prop *SubChannelProposal, s
 	}
 
 	return c.completeFunding(ctx, subChannel)
+}
+
+// subscribeUpdateReq is the counterpart to `enableUpdateReqCache`.
+func (c *Client) subscribeUpdateReq(id channel.ID) {
+	if err := c.conn.Subscribe(c.conn.reqRecv, func(m *wire.Envelope) bool {
+		msg, ok := m.Msg.(*msgChannelUpdate)
+		return ok && msg.State.Version == 1 && msg.ID() == id
+	}); err != nil {
+		c.Log().Panic("Subscription should not fail.")
+	}
+}
+
+// enableUpdateReqCache enables caching of incoming version 1 channel updates.
+// This is needed to prevent an "got update for unknown channel" error if the
+// other party sent an update faster than we could set up the channel.
+func (c *Client) enableUpdateReqCache(ctx context.Context) {
+	c.conn.Cache(ctx, func(m *wire.Envelope) bool {
+		return (m.Msg.Type() == wire.ChannelUpdate && m.Msg.(*msgChannelUpdate).State.Version == 1)
+	})
 }
 
 // enableVer0Cache enables caching of incoming version 0 signatures.

@@ -38,9 +38,6 @@ func (r *Bob) exec(_cfg ExecConfig, ch *paymentChannel, propHandler *acceptNextP
 	cfg := _cfg.(*AliceBobExecConfig)
 	we, them := r.Idxs(cfg.Peers())
 
-	// 1st stage - channel controller set up
-	r.waitStage()
-
 	// 1st Bob sends some updates to Alice
 	for i := 0; i < cfg.NumPayments[we]; i++ {
 		ch.sendTransfer(cfg.TxAmounts[we], fmt.Sprintf("Bob#%d", i))
